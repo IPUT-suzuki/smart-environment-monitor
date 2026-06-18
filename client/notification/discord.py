@@ -9,12 +9,14 @@ logger = logging.getLogger(__name__)
 def notify_discord(webhook_url, message):
     logger.debug("webhook_url is set: %s", bool(webhook_url))
     logger.debug("message length: %d", len(message) if message else 0)
-    #念のためトークンの存在チェック
+    # 念のためトークンの存在チェック
     if not webhook_url:
         logger.warning("Discord notification skipped: DISCORD_WEBHOOK_URL is not set")
         return
-    #ウェブフックのURLが間違っている場合
-    if not webhook_url.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
+    # ウェブフックのURLが間違っている場合
+    if not webhook_url.startswith(
+        ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+    ):
         logger.warning("Discord notification skipped: invalid webhook URL")
         return
     payload = json.dumps({"content": message}).encode("utf-8")
@@ -30,7 +32,7 @@ def notify_discord(webhook_url, message):
     try:
         with urllib.request.urlopen(request, timeout=5):
             pass
-        logger.info('discord notification is success')
+        logger.info("discord notification is success")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         logger.error("Discord notification failed: HTTP %s: %s", e.code, body)
