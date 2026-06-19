@@ -5,10 +5,12 @@ from utils.data_class import SensorData, ServerSendData
 
 
 def build_payload(sensor_data: SensorData) -> ServerSendData:
+    #日本標準時に直す
+    JST = datetime.timezone(datetime.timedelta(hours=9))
     return {
         "client_id": CLIENT_ID,
         "region": CLIENT_REGION,
-        "datetime": datetime.datetime.now().isoformat(),
+        "datetime": datetime.datetime.now(JST).strftime("%Y-%m-%d %A %H:%M:%S"),
         "sensor_data": sensor_data,
     }
 
