@@ -19,7 +19,8 @@ def notify_discord(webhook_url, message):
     ):
         logger.warning("Discord notification skipped: invalid webhook URL")
         return
-    payload = json.dumps({"content": message}).encode("utf-8")
+    payload_data = message if isinstance(message, dict) else {"content": message}
+    payload = json.dumps(payload_data).encode("utf-8")
     request = urllib.request.Request(
         webhook_url,
         data=payload,

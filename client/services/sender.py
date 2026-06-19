@@ -2,9 +2,10 @@ import json
 import socket
 
 from config import SERVER_ADDR, SERVER_PORT
+from utils.data_class import ServerSendData
 
 
-def send_to_server(data: dict, server_addr=None, server_port=None):
+def send_to_server(data: ServerSendData, server_addr=None, server_port=None):
     server_addr = server_addr or SERVER_ADDR
     server_port = server_port or SERVER_PORT
 
