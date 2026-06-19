@@ -3,9 +3,9 @@ import time
 
 from config import DEFAULT_SEND_INTERVAL, DISCORD_WEBHOOK_URL
 from sensor.dummy import get_dummy_data
-from notification.discord import notify_discord
-from payload import build_payload
-from sender import send_to_server
+from services.notification.discord import notify_discord
+from services.payload import build_payload
+from services.sender import send_to_server
 
 logger = logging.getLogger(__name__)
 

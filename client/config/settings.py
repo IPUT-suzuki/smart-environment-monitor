@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).with_name(".env"), override=True)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
 
 
 def require_env(name):  # .envにデータが設定されているかチェック

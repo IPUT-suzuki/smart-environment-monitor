@@ -1,7 +1,7 @@
 import logging
 
 from config import DISCORD_WEBHOOK_URL
-from notification.discord import notify_discord
+from services.notification.discord import notify_discord
 
 logger = logging.getLogger(__name__)
 

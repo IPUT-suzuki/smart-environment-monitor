@@ -1,5 +1,5 @@
 from cli import parse_args
-from logger import setup_logging
+from utils.logger import setup_logging
 from modes.registry import run_mode
 
 

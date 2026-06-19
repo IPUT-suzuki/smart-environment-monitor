@@ -1,4 +1,3 @@
-# sender.py
 import json
 import socket
 

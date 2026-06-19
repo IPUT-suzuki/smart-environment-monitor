@@ -3,8 +3,8 @@ import time
 
 from config import DEFAULT_SEND_INTERVAL
 from sensor.dummy import get_dummy_data
-from payload import build_payload
-from sender import send_to_server
+from services.payload import build_payload
+from services.sender import send_to_server
 
 logger = logging.getLogger(__name__)
 
