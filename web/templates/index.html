@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>センサーデータ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page">
+        <header class="page-header">
+            <div>
+                <h1>センサーデータ</h1>
+                <p data-sensor-summary>{{ csv_path }} / {{ row_count }} 件</p>
+            </div>
+            <div class="header-actions">
+                <button class="secondary-button" type="button" data-csv-download>CSV保存</button>
+                <button class="refresh-link" type="button" data-refresh-button>更新</button>
+            </div>
+        </header>
+
+        <section class="toolbar" aria-label="表示切り替え" {% if not rows %}hidden{% endif %}>
+            <div class="view-toggle">
+                <button class="view-button is-active" type="button" data-view-button="table">一覧</button>
+                <button class="view-button" type="button" data-view-button="graph">グラフ</button>
+            </div>
+        </section>
+
+        <section class="graph-panel" data-view-panel="graph" hidden>
+            <div class="graph-controls">
+                <label class="graph-limit-select">
+                    <span>グラフ最大表示件数</span>
+                    <select data-chart-limit>
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="all">全件</option>
+                    </select>
+                </label>
+            </div>
+            <div class="graph-grid">
+                <section class="graph-pane" data-graph-pane="temperature">
+                    <div class="graph-pane-header">
+                        <h2>温度</h2>
+                        <div class="graph-pane-actions">
+                            <button class="secondary-button" type="button" data-graph-download="temperature">保存</button>
+                        </div>
+                    </div>
+                    <canvas data-chart-metric="temperature" width="520" height="280"></canvas>
+                </section>
+                <section class="graph-pane" data-graph-pane="humidity">
+                    <div class="graph-pane-header">
+                        <h2>湿度</h2>
+                        <div class="graph-pane-actions">
+                            <button class="secondary-button" type="button" data-graph-download="humidity">保存</button>
+                        </div>
+                    </div>
+                    <canvas data-chart-metric="humidity" width="520" height="280"></canvas>
+                </section>
+                <section class="graph-pane" data-graph-pane="pressure">
+                    <div class="graph-pane-header">
+                        <h2>気圧</h2>
+                        <div class="graph-pane-actions">
+                            <button class="secondary-button" type="button" data-graph-download="pressure">保存</button>
+                        </div>
+                    </div>
+                    <canvas data-chart-metric="pressure" width="520" height="280"></canvas>
+                </section>
+                <section class="graph-pane" data-graph-pane="co2">
+                    <div class="graph-pane-header">
+                        <h2>CO2</h2>
+                        <div class="graph-pane-actions">
+                            <button class="secondary-button" type="button" data-graph-download="co2">保存</button>
+                        </div>
+                    </div>
+                    <canvas data-chart-metric="co2" width="520" height="280"></canvas>
+                </section>
+            </div>
+        </section>
+
+        <section class="filter-panel" aria-label="検索条件" {% if not rows %}hidden{% endif %}>
+            <div class="filter-panel-header">
+                <h2>検索条件</h2>
+                <button class="secondary-button" type="button" data-clear-filters>クリア</button>
+            </div>
+            <div class="filter-grid">
+                <label class="filter-field">
+                    <span>端末ID</span>
+                    <select data-filter-op="client_id">
+                        <option value="contains">含む</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <input type="search" data-filter-value="client_id" autocomplete="off">
+                </label>
+                <label class="filter-field">
+                    <span>地域</span>
+                    <select data-filter-op="region">
+                        <option value="contains">含む</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <input type="search" data-filter-value="region" autocomplete="off">
+                </label>
+                <div class="filter-field filter-field-wide">
+                    <span>日時</span>
+                    <div class="range-inputs">
+                        <label>
+                            <span>開始</span>
+                            <input type="datetime-local" data-filter-min="datetime">
+                        </label>
+                        <label>
+                            <span>終了</span>
+                            <input type="datetime-local" data-filter-max="datetime">
+                        </label>
+                    </div>
+                </div>
+                <label class="filter-field">
+                    <span>温度</span>
+                    <select data-filter-op="temperature">
+                        <option value="range">範囲</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <div class="range-inputs">
+                        <input type="number" step="0.1" placeholder="最小" data-filter-min="temperature">
+                        <input type="number" step="0.1" placeholder="最大" data-filter-max="temperature">
+                        <input type="number" step="0.1" placeholder="等しい" data-filter-value="temperature" hidden>
+                    </div>
+                </label>
+                <label class="filter-field">
+                    <span>湿度</span>
+                    <select data-filter-op="humidity">
+                        <option value="range">範囲</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <div class="range-inputs">
+                        <input type="number" step="0.1" placeholder="最小" data-filter-min="humidity">
+                        <input type="number" step="0.1" placeholder="最大" data-filter-max="humidity">
+                        <input type="number" step="0.1" placeholder="等しい" data-filter-value="humidity" hidden>
+                    </div>
+                </label>
+                <label class="filter-field">
+                    <span>気圧</span>
+                    <select data-filter-op="pressure">
+                        <option value="range">範囲</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <div class="range-inputs">
+                        <input type="number" step="0.1" placeholder="最小" data-filter-min="pressure">
+                        <input type="number" step="0.1" placeholder="最大" data-filter-max="pressure">
+                        <input type="number" step="0.1" placeholder="等しい" data-filter-value="pressure" hidden>
+                    </div>
+                </label>
+                <label class="filter-field">
+                    <span>CO2</span>
+                    <select data-filter-op="co2">
+                        <option value="range">範囲</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <div class="range-inputs">
+                        <input type="number" step="1" placeholder="最小" data-filter-min="co2">
+                        <input type="number" step="1" placeholder="最大" data-filter-max="co2">
+                        <input type="number" step="1" placeholder="等しい" data-filter-value="co2" hidden>
+                    </div>
+                </label>
+            </div>
+        </section>
+
+        <section class="pagination-bar pagination-bar-top" aria-label="ページ操作 上部" {% if not rows %}hidden{% endif %}>
+            <p data-page-summary>0 件</p>
+            <div class="pagination-controls">
+                <label class="page-size-select">
+                    <span>表示件数</span>
+                    <select data-page-size>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="custom">指定する</option>
+                    </select>
+                    <input type="number" min="1" step="1" value="25" aria-label="任意の表示件数" data-page-size-custom hidden>
+                </label>
+                <button class="secondary-button" type="button" data-page-prev>前へ</button>
+                <span data-page-current>1 / 1</span>
+                <button class="secondary-button" type="button" data-page-next>次へ</button>
+            </div>
+        </section>
+
+        <div class="table-wrap" {% if not rows %}hidden{% endif %}>
+            <table>
+                <thead>
+                    <tr>
+                        {% for field in fieldnames %}
+                            <th data-field="{{ field }}">{{ field_labels.get(field, field) }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            {% for field in fieldnames %}
+                                <td>{{ row[field] }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <section class="pagination-bar pagination-bar-bottom" aria-label="ページ操作 下部" {% if not rows %}hidden{% endif %}>
+            <p data-page-summary>0 件</p>
+            <div class="pagination-controls">
+                <label class="page-size-select">
+                    <span>表示件数</span>
+                    <select data-page-size>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="custom">指定する</option>
+                    </select>
+                    <input type="number" min="1" step="1" value="25" aria-label="任意の表示件数" data-page-size-custom hidden>
+                </label>
+                <button class="secondary-button" type="button" data-page-prev>前へ</button>
+                <span data-page-current>1 / 1</span>
+                <button class="secondary-button" type="button" data-page-next>次へ</button>
+            </div>
+        </section>
+
+        <section class="empty-state" {% if rows %}hidden{% endif %}>
+            <h2>CSV データがありません</h2>
+            <p>sensor_data.csv が作成されると、ここに表示されます。</p>
+        </section>
+    </main>
+
+    <div class="chart-modal" data-chart-modal hidden>
+        <div class="chart-modal-backdrop" data-chart-modal-close></div>
+        <section class="chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chart-modal-title">
+            <header class="chart-modal-header">
+                <h2 id="chart-modal-title" data-chart-modal-title>グラフ</h2>
+                <div class="chart-modal-actions">
+                    <button class="secondary-button" type="button" data-chart-modal-download>保存</button>
+                    <button class="secondary-button" type="button" data-chart-modal-close>閉じる</button>
+                </div>
+            </header>
+            <section class="chart-modal-filters" aria-label="拡大グラフ検索条件">
+                <label class="modal-filter-field">
+                    <span>端末ID</span>
+                    <select data-modal-text-op="client_id">
+                        <option value="contains">含む</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <input type="search" data-modal-text-value="client_id" autocomplete="off">
+                </label>
+                <label class="modal-filter-field">
+                    <span>リージョン</span>
+                    <select data-modal-text-op="region">
+                        <option value="contains">含む</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <input type="search" data-modal-text-value="region" autocomplete="off">
+                </label>
+                <div class="modal-filter-field modal-filter-wide">
+                    <span>日時</span>
+                    <div class="range-inputs">
+                        <label>
+                            <span>開始</span>
+                            <input type="datetime-local" data-modal-filter-min="datetime">
+                        </label>
+                        <label>
+                            <span>終了</span>
+                            <input type="datetime-local" data-modal-filter-max="datetime">
+                        </label>
+                    </div>
+                </div>
+                <label class="modal-filter-field">
+                    <span data-modal-metric-label>値</span>
+                    <select data-modal-filter-op>
+                        <option value="range">範囲</option>
+                        <option value="equals">等しい</option>
+                    </select>
+                    <div class="range-inputs">
+                        <input type="number" step="0.1" placeholder="最小" data-modal-filter-min="value">
+                        <input type="number" step="0.1" placeholder="最大" data-modal-filter-max="value">
+                        <input type="number" step="0.1" placeholder="等しい" data-modal-filter-value hidden>
+                    </div>
+                </label>
+                <button class="secondary-button" type="button" data-modal-filter-clear>クリア</button>
+                <label class="modal-filter-field">
+                    <span>最大表示件数</span>
+                    <select data-modal-chart-limit>
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="all">全件</option>
+                    </select>
+                </label>
+            </section>
+            <canvas data-chart-modal-canvas width="1040" height="520"></canvas>
+        </section>
+    </div>
+    <script>
+        window.sensorRows = {{ rows | tojson }};
+        window.sensorFieldnames = {{ fieldnames | tojson }};
+        window.sensorFieldLabels = {{ field_labels | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
