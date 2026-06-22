@@ -4,11 +4,12 @@ import urllib.error
 import urllib.request
 
 from app.logging import log_debug_data
+from config.settings import DISCORD_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
 
-def notify_discord(webhook_url: str | None, message: str | dict, timeout: float = 5) -> bool:
+def notify_discord(webhook_url: str | None, message: str | dict, timeout: float | None = None) -> bool:
     if not webhook_url:
         logger.warning("Discord notification skipped: DISCORD_WEBHOOK_URL is not set")
         return False
@@ -16,6 +17,7 @@ def notify_discord(webhook_url: str | None, message: str | dict, timeout: float 
         logger.warning("Discord notification skipped: invalid webhook URL")
         return False
     request_body = message if isinstance(message, dict) else {"content": message}
+    request_timeout = DISCORD_TIMEOUT_SECONDS if timeout is None else timeout
     payload = json.dumps(request_body).encode("utf-8")
     log_debug_data(logger, "Discord request payload", request_body)
     request = urllib.request.Request(
@@ -28,7 +30,7 @@ def notify_discord(webhook_url: str | None, message: str | dict, timeout: float 
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout):
+        with urllib.request.urlopen(request, timeout=request_timeout):
             pass
         logger.info("Discord notification sent")
         logger.debug("Discord request accepted")

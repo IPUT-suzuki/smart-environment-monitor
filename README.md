@@ -51,6 +51,15 @@ python -m pip install -r requirements.txt
 ```dotenv
 SERVER_ADDR=0.0.0.0
 SERVER_PORT=9000
+
+# CSV 保存先（リポジトリルートからの相対パスまたは絶対パス）
+SENSOR_DATA_PATH=data/sensor_data.csv
+
+# TCP 動作設定
+TCP_ACCEPT_TIMEOUT_SECONDS=0.5
+TCP_CONNECTION_TIMEOUT_SECONDS=10
+TCP_MAX_REQUEST_BYTES=1048576
+TCP_SHUTDOWN_TIMEOUT_SECONDS=2
 ```
 
 `client/.env`:
@@ -60,17 +69,52 @@ SERVER_ADDR=192.168.1.10
 SERVER_PORT=9000
 CLIENT_ID=123456
 CLIENT_REGION=tokyo
-WEB_HEALTH_URL=http://192.168.1.20:5000/api/health
 
-# 任意。未設定時は Discord 通知を送信しません。
+# 任意の送信先
+WEB_HEALTH_URL=http://192.168.1.20:5000/api/health
 DISCORD_WEBHOOK_URL=
+
+# 実行周期と通知しきい値
+SEND_INTERVAL_SECONDS=4
+HEARTBEAT_INTERVAL_SECONDS=10
+SENSOR_FAILURE_NOTIFY_THRESHOLD=3
+HEALTH_REPORT_FAILURE_NOTIFY_THRESHOLD=3
+SERVER_SEND_FAILURE_NOTIFY_THRESHOLD=3
+
+# センサー接続設定
+DHT22_GPIO=26
+BME280_ADDR=0x76
+SERIAL_PORT=/dev/serial0
+SERIAL_BAUDRATE=9600
+SERIAL_TIMEOUT_SECONDS=1
+
+# 外部通信タイムアウト
+TCP_TIMEOUT_SECONDS=5
+WEB_HEALTH_TIMEOUT_SECONDS=5
+DISCORD_TIMEOUT_SECONDS=5
 ```
 
-センサー関連の既定値は `client/config/settings.py` にあります。
+新規セットアップ時は `client/.env.example` を `client/.env` にコピーし、端末固有の値を変更します。`SEND_INTERVAL_SECONDS` などの追加項目を省略した場合は、上記の既定値を使います。
 
-- DHT22 GPIO: `26`
-- BME280 I2C アドレス: `0x76`
-- MH-Z19C: `/dev/serial0`, 9600 baud
+`web/.env`:
+
+```dotenv
+# Flask 待受設定
+WEB_HOST=0.0.0.0
+WEB_PORT=5000
+WEB_DEBUG=false
+
+# 保存先
+SENSOR_DATA_PATH=data/sensor_data.csv
+HEALTH_HISTORY_PATH=data/health_history.csv
+
+# ヘルス状態と SSE
+HEALTH_OFFLINE_AFTER_SECONDS=30
+HEALTH_STREAM_RETRY_MILLISECONDS=3000
+HEALTH_STREAM_KEEPALIVE_SECONDS=15
+```
+
+新規セットアップ時は、各ディレクトリの `.env.example` を `.env` にコピーします。パスはリポジトリルートからの相対パスまたは絶対パスで指定できます。
 
 ## 起動
 

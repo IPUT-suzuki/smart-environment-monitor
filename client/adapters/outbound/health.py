@@ -5,7 +5,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 
-from config.settings import WEB_HEALTH_URL
+from config.settings import WEB_HEALTH_TIMEOUT_SECONDS, WEB_HEALTH_URL
 from app.logging import log_debug_data
 from domain.models import ClientHeartBeat
 
@@ -32,8 +32,9 @@ def sanitize_url_for_log(url: str) -> str:
     return path
 
 
-def send_heartbeat(health: ClientHeartBeat, web_health_url: str | None = None, timeout: float = 5) -> HeartbeatResult:
+def send_heartbeat(health: ClientHeartBeat, web_health_url: str | None = None, timeout: float | None = None) -> HeartbeatResult:
     url = web_health_url or WEB_HEALTH_URL
+    request_timeout = WEB_HEALTH_TIMEOUT_SECONDS if timeout is None else timeout
     if not url:
         logger.warning("heartbeat URL is not set")
         return HeartbeatResult(False, error="heartbeat URL is not set")
@@ -48,7 +49,7 @@ def send_heartbeat(health: ClientHeartBeat, web_health_url: str | None = None, t
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=request_timeout) as response:
             status = response.getcode()
         if 200 <= status < 300:
             logger.debug("heartbeat sent: url=%s status=%s", sanitize_url_for_log(url), status)
