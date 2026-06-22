@@ -1,12 +1,4 @@
-from cli import parse_args
-from utils.logger import setup_logging
-from modes.registry import run_mode
-
-
-def main():
-    args = parse_args()
-    setup_logging(args.debug)
-    run_mode(args)
+from app.main import main
 
 
 if __name__ == "__main__":

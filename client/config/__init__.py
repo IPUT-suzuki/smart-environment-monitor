@@ -10,4 +10,5 @@ from config.settings import (
     SERIAL_TIMEOUT,
     SERVER_ADDR,
     SERVER_PORT,
+    WEB_HEALTH_URL,
 )

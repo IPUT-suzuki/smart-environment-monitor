@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>センサーデータ API</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page api-docs-page">
+        <header class="page-header">
+            <div>
+                <h1>センサーデータ API</h1>
+                <p>JSON API の仕様と、ブラウザからの実リクエスト確認。</p>
+            </div>
+            <div class="header-actions">
+                <a class="refresh-link" href="{{ url_for('index') }}">ダッシュボードへ戻る</a>
+            </div>
+        </header>
+
+        <div class="api-docs-layout">
+            <aside class="api-toc" aria-label="目次">
+                <p>目次</p>
+                <nav>
+                    <a href="#api-overview">共通</a>
+                    <a href="#api-sensor-data">全センサーデータ</a>
+                    <a href="#api-sensor-search">センサーデータ検索</a>
+                    <a href="#api-health">ヘルス取得</a>
+                    <a href="#api-health-stream">ヘルスストリーム</a>
+                </nav>
+            </aside>
+            <div class="api-docs-content">
+        <section class="api-section api-overview" id="api-overview">
+            <p class="api-eyebrow">API REFERENCE</p>
+            <h2>使い方</h2>
+            <p>JSON API は <code>Content-Type: application/json</code> を返します。センサーデータは日時の新しい順に返ります。</p>
+        </section>
+
+        <section class="api-section" id="api-sensor-data">
+            <div class="api-endpoint-heading"><span class="api-method api-method-get">GET</span><h2>/api/sensor-data</h2></div>
+            <p class="api-lead">保存済みの全センサーデータを取得します。</p>
+            <p>応答は <code>csv_path</code>、<code>fieldnames</code>、<code>field_labels</code>、<code>rows</code>、<code>row_count</code> を含みます。</p>
+            <details class="api-code-example"><summary>curl 例を表示</summary><pre><code>curl {{ request.host_url.rstrip('/') }}/api/sensor-data</code></pre></details>
+            <div class="api-request-actions">
+                <code data-api-url="/api/sensor-data">/api/sensor-data</code>
+                <button class="secondary-button" type="button" data-copy-api-url="/api/sensor-data">URLをコピー</button>
+                <button class="secondary-button" type="button" data-api-request="/api/sensor-data" data-api-result-target="sensor-data-result">実行する</button>
+            </div>
+            <section class="api-inline-result" id="sensor-data-result" data-api-result hidden aria-live="polite">
+                <h3>実行結果</h3><p data-api-result-status></p><pre data-api-result-body>{}</pre>
+            </section>
+        </section>
+
+        <section class="api-section" id="api-sensor-search">
+            <div class="api-endpoint-heading"><span class="api-method api-method-get">GET</span><h2>/api/sensor-data/search</h2></div>
+            <p class="api-lead">センサーデータを検索します。条件を省略すると全件を返します。</p>
+            <table class="api-parameter-table">
+                <thead><tr><th>パラメータ</th><th>内容</th></tr></thead>
+                <tbody>
+                    <tr><td><code>client_id</code> / <code>region</code></td><td>検索文字列。既定は部分一致。</td></tr>
+                    <tr><td><code>client_id_match</code> / <code>region_match</code></td><td><code>contains</code>（既定）または <code>equals</code>。</td></tr>
+                    <tr><td><code>datetime_from</code> / <code>datetime_to</code></td><td>ISO 8601 の開始／終了日時。</td></tr>
+                    <tr><td><code>temperature</code> / <code>humidity</code> / <code>pressure</code> / <code>co2</code></td><td>完全一致する数値。</td></tr>
+                    <tr><td><code>*_min</code> / <code>*_max</code></td><td>各測定値の最小／最大値。</td></tr>
+                </tbody>
+            </table>
+            <p>成功時は全データ API の項目に加えて、適用した <code>filters</code> を返します。不正な条件は <code>400 {"error":"..."}</code> を返します。</p>
+            <details class="api-code-example"><summary>curl 例を表示</summary><pre><code>curl "{{ request.host_url.rstrip('/') }}/api/sensor-data/search?client_id=TK&amp;temperature_min=25"</code></pre></details>
+            <form class="api-search-form" data-api-search-form data-api-result-target="sensor-search-result">
+                <fieldset class="api-search-group"><legend>基本条件</legend><div class="api-search-grid">
+                    <label>端末ID<input name="client_id" type="search"></label>
+                    <label>端末ID一致<select name="client_id_match"><option value="contains">含む</option><option value="equals">等しい</option></select></label>
+                    <label>地域<input name="region" type="search"></label>
+                    <label>地域一致<select name="region_match"><option value="contains">含む</option><option value="equals">等しい</option></select></label>
+                    <label>開始日時<input name="datetime_from" type="datetime-local"></label>
+                    <label>終了日時<input name="datetime_to" type="datetime-local"></label>
+                </div></fieldset>
+                <details class="api-search-advanced"><summary>数値条件を指定する</summary><div class="api-search-grid">
+                    <label>温度（完全一致）<input name="temperature" type="number" step="0.1"></label><label>温度 最小<input name="temperature_min" type="number" step="0.1"></label><label>温度 最大<input name="temperature_max" type="number" step="0.1"></label>
+                    <label>湿度（完全一致）<input name="humidity" type="number" step="0.1"></label><label>湿度 最小<input name="humidity_min" type="number" step="0.1"></label><label>湿度 最大<input name="humidity_max" type="number" step="0.1"></label>
+                    <label>気圧（完全一致）<input name="pressure" type="number" step="0.1"></label><label>気圧 最小<input name="pressure_min" type="number" step="0.1"></label><label>気圧 最大<input name="pressure_max" type="number" step="0.1"></label>
+                    <label>CO2（完全一致）<input name="co2" type="number" step="1"></label><label>CO2 最小<input name="co2_min" type="number" step="1"></label><label>CO2 最大<input name="co2_max" type="number" step="1"></label>
+                </div></details>
+                <button class="secondary-button api-run-button" type="submit">検索 API を実行</button>
+            </form>
+            <div class="api-request-actions">
+                <code data-api-search-url>/api/sensor-data/search</code>
+                <button class="secondary-button" type="button" data-copy-api-search-url>URLをコピー</button>
+            </div>
+            <section class="api-inline-result" id="sensor-search-result" data-api-result hidden aria-live="polite">
+                <h3>実行結果</h3><p data-api-result-status></p><pre data-api-result-body>{}</pre>
+            </section>
+        </section>
+
+        <section class="api-section" id="api-health">
+            <div class="api-endpoint-heading"><span class="api-method api-method-get">GET</span><h2>/api/health</h2></div>
+            <p class="api-lead">端末ごとの最新ヘルス状態を取得します。</p>
+            <p><code>client_id</code> と <code>region</code> を指定すると、各項目の部分一致で絞り込みます。応答は <code>offline_after_seconds</code>、<code>filters</code>、<code>clients</code> を含みます。</p>
+            <details class="api-code-example"><summary>curl 例を表示</summary><pre><code>curl {{ request.host_url.rstrip('/') }}/api/health</code></pre></details>
+            <form class="api-search-form api-health-form" data-api-health-form data-api-result-target="health-result">
+                <fieldset class="api-search-group"><legend>検索条件</legend><div class="api-search-grid">
+                    <label>端末ID<input name="client_id" type="search"></label>
+                    <label>地域<input name="region" type="search"></label>
+                </div></fieldset>
+                <button class="secondary-button api-run-button" type="submit">ヘルス API を実行</button>
+            </form>
+            <div class="api-request-actions">
+                <code data-api-health-url>/api/health</code>
+                <button class="secondary-button" type="button" data-copy-api-health-url>URLをコピー</button>
+            </div>
+            <section class="api-inline-result" id="health-result" data-api-result hidden aria-live="polite">
+                <h3>実行結果</h3><p data-api-result-status></p><pre data-api-result-body>{}</pre>
+            </section>
+        </section>
+
+        <section class="api-section" id="api-health-stream">
+            <div class="api-endpoint-heading"><span class="api-method api-method-stream">SSE</span><h2>/api/health/stream</h2></div>
+            <p>ヘルス更新を Server-Sent Events で通知します。最初に <code>retry: 3000</code> を返し、更新時は <code>event: health</code>、<code>data: updated</code> を送信します。</p>
+            <details class="api-code-example"><summary>curl 例を表示</summary><pre><code>curl -N {{ request.host_url.rstrip('/') }}/api/health/stream</code></pre></details>
+            <div class="api-request-actions">
+                <code data-api-url="/api/health/stream">/api/health/stream</code>
+                <button class="secondary-button" type="button" data-copy-api-url="/api/health/stream">URLをコピー</button>
+                <button class="secondary-button" type="button" data-health-stream-start>接続を確認</button>
+                <button class="secondary-button" type="button" data-health-stream-stop disabled>切断</button>
+            </div>
+            <section class="api-inline-result" id="health-stream-result" data-api-result hidden aria-live="polite">
+                <h3>実行結果</h3><p data-api-result-status></p><pre data-api-result-body>{}</pre>
+            </section>
+        </section>
+            </div>
+        </div>
+    </main>
+    <script src="{{ url_for('static', filename='api-docs.js') }}"></script>
+</body>
+</html>

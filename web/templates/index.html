@@ -14,6 +14,7 @@
                 <p data-sensor-summary>{{ csv_path }} / {{ row_count }} 件</p>
             </div>
             <div class="header-actions">
+                <a class="refresh-link" href="{{ url_for('api_docs') }}">API</a>
                 <button class="secondary-button" type="button" data-csv-download>CSV保存</button>
                 <button class="refresh-link" type="button" data-refresh-button>更新</button>
             </div>
@@ -86,10 +87,21 @@
                     <p>最終受信から30秒を超えた端末はオフラインとして表示します。</p>
                 </div>
             </div>
+            <div class="health-search" aria-label="ヘルス検索条件">
+                <label>
+                    <span>端末ID</span>
+                    <input type="search" data-health-filter="client_id" list="health-client-id-suggestions" autocomplete="off">
+                </label>
+                <label>
+                    <span>地域</span>
+                    <input type="search" data-health-filter="region" list="health-region-suggestions" autocomplete="off">
+                </label>
+                <button class="secondary-button" type="button" data-clear-health-filters>クリア</button>
+            </div>
             <div class="health-list" data-health-list></div>
             <section class="empty-state" data-health-empty hidden>
-                <h2>ヘルスデータがありません</h2>
-                <p>クライアントからヘルスデータが届くと、ここに表示されます。</p>
+                <h2 data-health-empty-title>ヘルスデータがありません</h2>
+                <p data-health-empty-message>クライアントからヘルスデータが届くと、ここに表示されます。</p>
             </section>
         </section>
 
@@ -105,7 +117,7 @@
                         <option value="contains">含む</option>
                         <option value="equals">等しい</option>
                     </select>
-                    <input type="search" data-filter-value="client_id" autocomplete="off">
+                    <input type="search" data-filter-value="client_id" list="client-id-suggestions" autocomplete="off">
                 </label>
                 <label class="filter-field">
                     <span>地域</span>
@@ -113,7 +125,7 @@
                         <option value="contains">含む</option>
                         <option value="equals">等しい</option>
                     </select>
-                    <input type="search" data-filter-value="region" autocomplete="off">
+                    <input type="search" data-filter-value="region" list="region-suggestions" autocomplete="off">
                 </label>
                 <div class="filter-field filter-field-wide">
                     <span>日時</span>
@@ -202,17 +214,29 @@
             <table>
                 <thead>
                     <tr>
-                        {% for field in fieldnames %}
+                        {% for field in fieldnames if field not in ("session_id", "sequence") %}
                             <th data-field="{{ field }}">{{ field_labels.get(field, field) }}</th>
                         {% endfor %}
+                        <th class="sensor-detail-heading">詳細</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
                         <tr>
-                            {% for field in fieldnames %}
+                            {% for field in fieldnames if field not in ("session_id", "sequence") %}
                                 <td>{{ row[field] }}</td>
                             {% endfor %}
+                            <td class="sensor-detail-cell">
+                                <details>
+                                    <summary>表示</summary>
+                                    <dl class="sensor-row-detail-list">
+                                        <dt>セッションID</dt>
+                                        <dd>{{ row.get("session_id", "-") or "-" }}</dd>
+                                        <dt>送信番号</dt>
+                                        <dd>{{ row.get("sequence", "-") or "-" }}</dd>
+                                    </dl>
+                                </details>
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -240,7 +264,7 @@
 
         <section class="empty-state" {% if rows %}hidden{% endif %}>
             <h2>CSV データがありません</h2>
-            <p>sensor_data.csv が作成されると、ここに表示されます。</p>
+            <p>センサーデータを受信すると、ここに表示されます。</p>
         </section>
     </main>
 
@@ -261,7 +285,7 @@
                         <option value="contains">含む</option>
                         <option value="equals">等しい</option>
                     </select>
-                    <input type="search" data-modal-text-value="client_id" autocomplete="off">
+                    <input type="search" data-modal-text-value="client_id" list="client-id-suggestions" autocomplete="off">
                 </label>
                 <label class="modal-filter-field">
                     <span>リージョン</span>
@@ -269,7 +293,7 @@
                         <option value="contains">含む</option>
                         <option value="equals">等しい</option>
                     </select>
-                    <input type="search" data-modal-text-value="region" autocomplete="off">
+                    <input type="search" data-modal-text-value="region" list="region-suggestions" autocomplete="off">
                 </label>
                 <div class="modal-filter-field modal-filter-wide">
                     <span>日時</span>
@@ -310,6 +334,10 @@
             <canvas data-chart-modal-canvas width="1040" height="520"></canvas>
         </section>
     </div>
+    <datalist id="client-id-suggestions"></datalist>
+    <datalist id="region-suggestions"></datalist>
+    <datalist id="health-client-id-suggestions"></datalist>
+    <datalist id="health-region-suggestions"></datalist>
     <script>
         window.sensorRows = {{ rows | tojson }};
         window.sensorFieldnames = {{ fieldnames | tojson }};

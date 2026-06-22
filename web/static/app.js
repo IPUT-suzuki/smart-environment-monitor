@@ -15,11 +15,14 @@ let modalFilterState = {};
 
 const textFields = ["client_id", "region"];
 const numericFields = ["temperature", "humidity", "pressure", "co2"];
+const detailOnlyFields = new Set(["session_id", "sequence"]);
 
 const chartPanel = document.querySelector('[data-view-panel="graph"]');
 const healthPanel = document.querySelector('[data-view-panel="health"]');
 const healthList = document.querySelector("[data-health-list]");
 const healthEmpty = document.querySelector("[data-health-empty]");
+const healthEmptyTitle = document.querySelector("[data-health-empty-title]");
+const healthEmptyMessage = document.querySelector("[data-health-empty-message]");
 const chartCanvases = document.querySelectorAll("[data-chart-metric]");
 const chartPanes = document.querySelectorAll("[data-graph-pane]");
 const chartDownloadButtons = document.querySelectorAll("[data-graph-download]");
@@ -29,6 +32,10 @@ const chartModalCanvas = document.querySelector("[data-chart-modal-canvas]");
 const chartModalCloseButtons = document.querySelectorAll("[data-chart-modal-close]");
 const chartModalDownloadButton = document.querySelector("[data-chart-modal-download]");
 const chartLimitSelect = document.querySelector("[data-chart-limit]");
+const clientIdSuggestions = document.querySelector("#client-id-suggestions");
+const regionSuggestions = document.querySelector("#region-suggestions");
+const healthClientIdSuggestions = document.querySelector("#health-client-id-suggestions");
+const healthRegionSuggestions = document.querySelector("#health-region-suggestions");
 const modalFilterControls = document.querySelectorAll("[data-modal-filter-min], [data-modal-filter-max], [data-modal-filter-value], [data-modal-filter-op], [data-modal-text-op], [data-modal-text-value]");
 const modalFilterOp = document.querySelector("[data-modal-filter-op]");
 const modalChartLimitSelect = document.querySelector("[data-modal-chart-limit]");
@@ -45,7 +52,7 @@ const tableHeadRow = document.querySelector("thead tr");
 const tableBody = document.querySelector("tbody");
 const toolbar = document.querySelector(".toolbar");
 const filterPanel = document.querySelector(".filter-panel");
-const paginationBar = document.querySelector(".pagination-bar");
+const paginationBars = document.querySelectorAll(".pagination-bar");
 const emptyState = document.querySelector(".empty-state");
 const refreshButton = document.querySelector("[data-refresh-button]");
 const clearFiltersButton = document.querySelector("[data-clear-filters]");
@@ -60,11 +67,15 @@ const nextPageButtons = document.querySelectorAll("[data-page-next]");
 const viewButtons = document.querySelectorAll("[data-view-button]");
 const filterControls = document.querySelectorAll("[data-filter-op], [data-filter-value], [data-filter-min], [data-filter-max]");
 const numericFilterOps = document.querySelectorAll("[data-filter-op='temperature'], [data-filter-op='humidity'], [data-filter-op='pressure'], [data-filter-op='co2']");
+const healthFilterControls = document.querySelectorAll("[data-health-filter]");
+const clearHealthFiltersButton = document.querySelector("[data-clear-health-filters]");
 
 const fallbackFieldLabels = {
     client_id: "端末ID",
     region: "地域",
     datetime: "日時",
+    session_id: "セッションID",
+    sequence: "送信番号",
     temperature: "温度",
     humidity: "湿度",
     pressure: "気圧",
@@ -100,13 +111,20 @@ function setView(view) {
     activeView = view;
     const showGraph = view === "graph";
     const showHealth = view === "health";
+    const showSearch = view === "table" || showGraph;
     const hasRows = tableRows.length > 0;
+
+    if (showGraph) {
+        chartPanel.before(filterPanel);
+    }
 
     chartPanel.hidden = !showGraph || !hasRows;
     healthPanel.hidden = !showHealth;
     tablePanel.hidden = view !== "table" || !hasRows;
-    filterPanel.hidden = view !== "table" || !hasRows;
-    paginationBar.hidden = view !== "table" || !hasRows;
+    filterPanel.hidden = !showSearch || !hasRows;
+    paginationBars.forEach((paginationBar) => {
+        paginationBar.hidden = view !== "table" || !hasRows;
+    });
     emptyState.hidden = view !== "table" || hasRows;
 
     viewButtons.forEach((button) => {
@@ -174,13 +192,77 @@ function updateSensorData(payload, options = {}) {
     fieldnames = payload.fieldnames || [];
     fieldLabels = payload.field_labels || fieldLabels;
 
+    renderTextSuggestions();
     renderSummary(payload);
     updateDataViews({ preservePage: options.preservePage });
     renderEmptyState();
 }
 
+function renderTextSuggestions() {
+    renderSuggestions(clientIdSuggestions, "client_id");
+    renderSuggestions(regionSuggestions, "region");
+}
+
+function renderSuggestions(datalist, field) {
+    if (!datalist) {
+        return;
+    }
+
+    const values = [...new Set(
+        tableRows
+            .map((row) => String(row[field] || "").trim())
+            .filter(Boolean),
+    )].sort((a, b) => a.localeCompare(b, "ja", { numeric: true, sensitivity: "base" }));
+
+    datalist.replaceChildren(...values.map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        return option;
+    }));
+}
+
 function updateHealthData(payload) {
     healthClients = payload.clients || [];
+    renderHealthSuggestions();
+    renderHealth();
+}
+
+function renderHealthSuggestions() {
+    renderHealthSuggestionValues(healthClientIdSuggestions, "client_id");
+    renderHealthSuggestionValues(healthRegionSuggestions, "region");
+}
+
+function renderHealthSuggestionValues(datalist, field) {
+    if (!datalist) {
+        return;
+    }
+    const values = [...new Set(
+        healthClients
+            .map((client) => String(client.client?.[field] || "").trim())
+            .filter(Boolean),
+    )].sort((a, b) => a.localeCompare(b, "ja", { numeric: true, sensitivity: "base" }));
+    datalist.replaceChildren(...values.map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        return option;
+    }));
+}
+
+function healthFilterValue(field) {
+    return document.querySelector(`[data-health-filter="${field}"]`)?.value.trim().toLowerCase() || "";
+}
+
+function filteredHealthClients() {
+    return healthClients.filter((client) => textFields.every((field) => {
+        const query = healthFilterValue(field);
+        return !query || String(client.client?.[field] || "").toLowerCase().includes(query);
+    }));
+}
+
+function clearHealthFilters() {
+    healthFilterControls.forEach((control) => {
+        control.value = "";
+    });
     renderHealth();
 }
 
@@ -189,13 +271,30 @@ function renderHealth() {
         return;
     }
 
-    healthList.replaceChildren(...healthClients.map(createHealthCard));
-    healthEmpty.hidden = healthClients.length > 0;
+    const expandedClientIds = new Set(
+        [...healthList.querySelectorAll(".health-card[data-client-id] details[open]")]
+            .map((details) => details.closest(".health-card")?.dataset.clientId)
+            .filter(Boolean),
+    );
+    const clients = filteredHealthClients();
+    healthList.replaceChildren(...clients.map((client) => createHealthCard(
+        client,
+        expandedClientIds.has(client.client?.client_id),
+    )));
+    healthEmpty.hidden = clients.length > 0;
+    if (healthClients.length === 0) {
+        healthEmptyTitle.textContent = "ヘルスデータがありません";
+        healthEmptyMessage.textContent = "クライアントからヘルスデータが届くと、ここに表示されます。";
+    } else if (clients.length === 0) {
+        healthEmptyTitle.textContent = "条件に一致するヘルスデータがありません";
+        healthEmptyMessage.textContent = "端末IDまたは地域の検索条件を変更してください。";
+    }
 }
 
-function createHealthCard(client) {
+function createHealthCard(client, detailsOpen = false) {
     const card = document.createElement("article");
     card.className = "health-card";
+    card.dataset.clientId = client.client?.client_id || "";
     const header = document.createElement("header");
     header.className = "health-card-header";
     const title = document.createElement("div");
@@ -215,6 +314,7 @@ function createHealthCard(client) {
     summary.textContent = errors.length ? errors.join(" / ") : "異常は報告されていません";
 
     const details = document.createElement("details");
+    details.open = detailsOpen;
     const detailsSummary = document.createElement("summary");
     detailsSummary.textContent = "詳細を表示";
     details.appendChild(detailsSummary);
@@ -228,7 +328,11 @@ function createHealthCard(client) {
         ]));
     });
     groups.appendChild(createHealthGroup("サーバー送信", client.server_send, [
-        ["成功", "success"], ["失敗数", "fail_count"], ["連続失敗数", "consecutive_fail_count"],
+        ["成功", "success"], ["送信成功数", "success_count"], ["server受信数", "received_count"], ["最終ACK連番", "last_ack_sequence"], ["失敗数", "fail_count"], ["連続失敗数", "consecutive_fail_count"],
+        ["最終成功", "last_success_at"], ["最終失敗", "last_failed_at"], ["HTTPステータス", "last_status_code"], ["エラー", "error"],
+    ]));
+    groups.appendChild(createHealthGroup("ヘルスレポート", client.health_report, [
+        ["成功", "success"], ["成功数", "success_count"], ["失敗数", "fail_count"], ["連続失敗数", "consecutive_fail_count"],
         ["最終成功", "last_success_at"], ["最終失敗", "last_failed_at"], ["HTTPステータス", "last_status_code"], ["エラー", "error"],
     ]));
     groups.appendChild(createHealthGroup("ランタイム", client.runtime, [
@@ -307,13 +411,22 @@ function renderTable() {
         return;
     }
 
-    tableHeadRow.replaceChildren(...fieldnames.map((field) => createHeaderCell(field)));
+    const tableFields = fieldnames.filter((field) => !detailOnlyFields.has(field));
+    const expandedRowKeys = new Set(
+        [...tableBody.querySelectorAll("tr[data-sensor-row-key] details[open]")]
+            .map((details) => details.closest("tr")?.dataset.sensorRowKey)
+            .filter(Boolean),
+    );
+    tableHeadRow.replaceChildren(
+        ...tableFields.map((field) => createHeaderCell(field)),
+        createDetailsHeaderCell(),
+    );
 
     if (filteredRows.length === 0) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
         td.className = "no-results";
-        td.colSpan = Math.max(fieldnames.length, 1);
+        td.colSpan = Math.max(tableFields.length + 1, 1);
         td.textContent = "条件に一致するデータがありません";
         tr.appendChild(td);
         tableBody.replaceChildren(tr);
@@ -322,15 +435,51 @@ function renderTable() {
 
     tableBody.replaceChildren(...pagedRows.map((row) => {
         const tr = document.createElement("tr");
+        const rowKey = sensorRowKey(row);
+        tr.dataset.sensorRowKey = rowKey;
 
-        fieldnames.forEach((field) => {
+        tableFields.forEach((field) => {
             const td = document.createElement("td");
             td.textContent = row[field] || "";
             tr.appendChild(td);
         });
 
+        tr.appendChild(createSensorDetailsCell(row, expandedRowKeys.has(rowKey)));
+
         return tr;
     }));
+}
+
+function createDetailsHeaderCell() {
+    const th = document.createElement("th");
+    th.className = "sensor-detail-heading";
+    th.textContent = "詳細";
+    return th;
+}
+
+function sensorRowKey(row) {
+    return [row.client_id, row.datetime, row.session_id, row.sequence].join("\u001f");
+}
+
+function createSensorDetailsCell(row, detailsOpen) {
+    const td = document.createElement("td");
+    td.className = "sensor-detail-cell";
+    const details = document.createElement("details");
+    details.open = detailsOpen;
+    const summary = document.createElement("summary");
+    summary.textContent = "表示";
+    const list = document.createElement("dl");
+    list.className = "sensor-row-detail-list";
+    [["セッションID", row.session_id], ["送信番号", row.sequence]].forEach(([label, value]) => {
+        const term = document.createElement("dt");
+        const definition = document.createElement("dd");
+        term.textContent = label;
+        definition.textContent = value === undefined || value === null || value === "" ? "-" : value;
+        list.append(term, definition);
+    });
+    details.append(summary, list);
+    td.appendChild(details);
+    return td;
 }
 
 function createHeaderCell(field) {
@@ -634,8 +783,10 @@ function renderEmptyState() {
     const hasRows = tableRows.length > 0;
 
     toolbar.hidden = false;
-    filterPanel.hidden = !hasRows || currentView() !== "table";
-    paginationBar.hidden = !hasRows || currentView() !== "table";
+    filterPanel.hidden = !hasRows || !["table", "graph"].includes(currentView());
+    paginationBars.forEach((paginationBar) => {
+        paginationBar.hidden = !hasRows || currentView() !== "table";
+    });
     emptyState.hidden = hasRows || currentView() !== "table";
 
     if (!hasRows) {
@@ -687,7 +838,10 @@ function limitRows(rows, limit) {
     }
 
     const count = Number.parseInt(limit, 10);
-    return Number.isFinite(count) ? rows.slice(-count) : rows;
+    if (!Number.isFinite(count)) {
+        return rows;
+    }
+    return rows.slice(-count);
 }
 
 function chartAxisRange(metric) {
@@ -1150,6 +1304,7 @@ function formatValue(value) {
 }
 
 syncNumericFilterInputs();
+renderTextSuggestions();
 updateDataViews({ preservePage: true });
 connectHealthStream();
 
@@ -1179,6 +1334,8 @@ numericFilterOps.forEach((control) => {
 });
 
 clearFiltersButton.addEventListener("click", clearFilters);
+healthFilterControls.forEach((control) => control.addEventListener("input", renderHealth));
+clearHealthFiltersButton.addEventListener("click", clearHealthFilters);
 refreshButton.addEventListener("click", refreshDashboardData);
 csvDownloadButton.addEventListener("click", downloadCsv);
 pageSizeSelects.forEach((select) => {
