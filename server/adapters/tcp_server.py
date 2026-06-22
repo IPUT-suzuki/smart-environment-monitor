@@ -4,6 +4,12 @@ import socket
 import threading
 
 from app.logging import log_debug_data
+from config.settings import (
+    TCP_ACCEPT_TIMEOUT_SECONDS,
+    TCP_CONNECTION_TIMEOUT_SECONDS,
+    TCP_MAX_REQUEST_BYTES,
+    TCP_SHUTDOWN_TIMEOUT_SECONDS,
+)
 from domain.protocol import validate_payload
 from repositories.csv_sensor_repository import CsvSensorRepository
 
@@ -33,7 +39,7 @@ class SensorTcpServer:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind((self.host, self.port))
         listener.listen()
-        listener.settimeout(0.5)
+        listener.settimeout(TCP_ACCEPT_TIMEOUT_SECONDS)
         self._socket = listener
         logger.info("server listening on %s:%s", *self.address)
 
@@ -64,14 +70,14 @@ class SensorTcpServer:
         })
         buffer = bytearray()
         with connection:
-            connection.settimeout(10)
+            connection.settimeout(TCP_CONNECTION_TIMEOUT_SECONDS)
             try:
                 while True:
                     chunk = connection.recv(4096)
                     if not chunk:
                         return
                     buffer.extend(chunk)
-                    if len(buffer) > 1_048_576:
+                    if len(buffer) > TCP_MAX_REQUEST_BYTES:
                         self._send_ack(connection, {"ok": False, "error": "request too large"})
                         return
                     while b"\n" in buffer:
@@ -148,4 +154,4 @@ class SensorTcpServer:
             self._socket.close()
             self._socket = None
         if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join(timeout=2)
+            self._thread.join(timeout=TCP_SHUTDOWN_TIMEOUT_SECONDS)

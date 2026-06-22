@@ -6,11 +6,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from config.settings import (
+    HEALTH_HISTORY_PATH as CONFIGURED_HEALTH_HISTORY_PATH,
+    HEALTH_OFFLINE_AFTER_SECONDS,
+    HEALTH_STREAM_KEEPALIVE_SECONDS,
+    HEALTH_STREAM_RETRY_MILLISECONDS,
+    SENSOR_DATA_PATH,
+    WEB_DEBUG,
+    WEB_HOST,
+    WEB_PORT,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-CSV_CANDIDATES = [BASE_DIR / "data" / "sensor_data.csv"]
-HEALTH_HISTORY_PATH = BASE_DIR / "data" / "health_history.csv"
-HEALTH_OFFLINE_AFTER = timedelta(seconds=30)
+CSV_CANDIDATES = [SENSOR_DATA_PATH]
+HEALTH_HISTORY_PATH = CONFIGURED_HEALTH_HISTORY_PATH
+HEALTH_OFFLINE_AFTER = timedelta(seconds=HEALTH_OFFLINE_AFTER_SECONDS)
 JST = timezone(timedelta(hours=9))
 FIELD_LABELS = {
     "client_id": "端末ID",
@@ -451,10 +461,10 @@ def health_stream():
         with HEALTH_STREAM_LOCK:
             HEALTH_STREAM_SUBSCRIBERS.add(subscriber)
         try:
-            yield "retry: 3000\n\n"
+            yield f"retry: {HEALTH_STREAM_RETRY_MILLISECONDS}\n\n"
             while True:
                 try:
-                    subscriber.get(timeout=15)
+                    subscriber.get(timeout=HEALTH_STREAM_KEEPALIVE_SECONDS)
                     yield "event: health\ndata: updated\n\n"
                 except queue.Empty:
                     yield ": keepalive\n\n"
@@ -473,4 +483,4 @@ LATEST_HEALTH.update(load_latest_health())
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host=WEB_HOST, port=WEB_PORT, debug=WEB_DEBUG)

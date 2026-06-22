@@ -51,6 +51,15 @@ python -m pip install -r requirements.txt
 ```dotenv
 SERVER_ADDR=0.0.0.0
 SERVER_PORT=9000
+
+# CSV 保存先（リポジトリルートからの相対パスまたは絶対パス）
+SENSOR_DATA_PATH=data/sensor_data.csv
+
+# TCP 動作設定
+TCP_ACCEPT_TIMEOUT_SECONDS=0.5
+TCP_CONNECTION_TIMEOUT_SECONDS=10
+TCP_MAX_REQUEST_BYTES=1048576
+TCP_SHUTDOWN_TIMEOUT_SECONDS=2
 ```
 
 `client/.env`:
@@ -86,6 +95,26 @@ DISCORD_TIMEOUT_SECONDS=5
 ```
 
 新規セットアップ時は `client/.env.example` を `client/.env` にコピーし、端末固有の値を変更します。`SEND_INTERVAL_SECONDS` などの追加項目を省略した場合は、上記の既定値を使います。
+
+`web/.env`:
+
+```dotenv
+# Flask 待受設定
+WEB_HOST=0.0.0.0
+WEB_PORT=5000
+WEB_DEBUG=false
+
+# 保存先
+SENSOR_DATA_PATH=data/sensor_data.csv
+HEALTH_HISTORY_PATH=data/health_history.csv
+
+# ヘルス状態と SSE
+HEALTH_OFFLINE_AFTER_SECONDS=30
+HEALTH_STREAM_RETRY_MILLISECONDS=3000
+HEALTH_STREAM_KEEPALIVE_SECONDS=15
+```
+
+新規セットアップ時は、各ディレクトリの `.env.example` を `.env` にコピーします。パスはリポジトリルートからの相対パスまたは絶対パスで指定できます。
 
 ## 起動
 
