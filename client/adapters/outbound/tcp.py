@@ -2,7 +2,7 @@ import json
 import logging
 import socket
 
-from config.settings import SERVER_ADDR, SERVER_PORT
+from config.settings import SERVER_ADDR, SERVER_PORT, TCP_TIMEOUT_SECONDS
 from app.logging import log_debug_data
 from domain.models import ServerSendData
 
@@ -17,19 +17,20 @@ def send_to_server(
     data: ServerSendData,
     server_addr: str | None = None,
     server_port: int | None = None,
-    timeout: float = 5,
+    timeout: float | None = None,
 ) -> int:
     """Send one JSON Lines payload and return the server's saved-row count."""
     address = server_addr or SERVER_ADDR
     port = server_port or SERVER_PORT
+    request_timeout = TCP_TIMEOUT_SECONDS if timeout is None else timeout
     payload = (json.dumps(data, separators=(",", ":")) + "\n").encode("utf-8")
     log_debug_data(logger, "tcp send request", {
         "destination": f"{address}:{port}",
         "bytes": len(payload),
         "payload": data,
     })
-    with socket.create_connection((address, port), timeout=timeout) as sock:
-        sock.settimeout(timeout)
+    with socket.create_connection((address, port), timeout=request_timeout) as sock:
+        sock.settimeout(request_timeout)
         sock.sendall(payload)
         response = bytearray()
         while b"\n" not in response:

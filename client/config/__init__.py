@@ -3,6 +3,7 @@ from config.settings import (
     CLIENT_ID,
     CLIENT_REGION,
     DEFAULT_SEND_INTERVAL,
+    DISCORD_TIMEOUT_SECONDS,
     DHT22_GPIO,
     DISCORD_WEBHOOK_URL,
     SERIAL_BAUDRATE,
@@ -11,4 +12,6 @@ from config.settings import (
     SERVER_ADDR,
     SERVER_PORT,
     WEB_HEALTH_URL,
+    WEB_HEALTH_TIMEOUT_SECONDS,
+    TCP_TIMEOUT_SECONDS,
 )
