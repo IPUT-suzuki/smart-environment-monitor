@@ -16,7 +16,7 @@ def run_main_mode(args) -> None:
     sensors = SensorSuite(
         dht22=DHT22Sensor(DHT22_GPIO),
         bme280=BME280Sensor(BME280_ADDR),
-        mhz19c=MHZ19CSensor(SERIAL_PORT, SERIAL_BAUDRATE, SERIAL_TIMEOUT),
+        mhz19c=DummyMHZ19CSensor(),
     )
     logger.info("start main mode")
     logger.debug(

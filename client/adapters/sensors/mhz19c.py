@@ -23,6 +23,7 @@ class MHZ19CSensor:
             self._serial.write(bytes([0xFF, 0x01, 0x86, 0, 0, 0, 0, 0, 0x79]))
             time.sleep(0.1)
             response = self._serial.read(9)
+            logger.debug(response)
             if len(response) != 9:
                 logger.warning("MH-Z19C response length was %d, expected 9", len(response))
                 return None
