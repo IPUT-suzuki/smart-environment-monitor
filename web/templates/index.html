@@ -24,6 +24,7 @@
                 <button class="view-button is-active" type="button" data-view-button="table">一覧</button>
                 <button class="view-button" type="button" data-view-button="graph">グラフ</button>
                 <button class="view-button" type="button" data-view-button="health">ヘルス</button>
+                <button class="view-button" type="button" data-view-button="manual">手動入力</button>
             </div>
         </section>
 
@@ -102,6 +103,41 @@
                 <h2 data-health-empty-title>ヘルスデータがありません</h2>
                 <p data-health-empty-message>クライアントからヘルスデータが届くと、ここに表示されます。</p>
             </section>
+        </section>
+
+        <section class="manual-panel" data-view-panel="manual" hidden>
+            <div class="manual-panel-header">
+                <h2>手動入力</h2>
+                <p>温度・湿度・気圧・CO2 を数値で入力して保存します。</p>
+            </div>
+            <form class="manual-form" data-manual-form>
+                <div class="manual-rows" data-manual-rows>
+                    <div class="manual-row" data-manual-row>
+                        <label class="filter-field">
+                            <span>温度</span>
+                            <input type="number" step="0.1" placeholder="25.0" data-manual-input="temperature" required>
+                        </label>
+                        <label class="filter-field">
+                            <span>湿度</span>
+                            <input type="number" step="0.1" placeholder="50.0" data-manual-input="humidity" required>
+                        </label>
+                        <label class="filter-field">
+                            <span>気圧</span>
+                            <input type="number" step="0.1" placeholder="1000.0" data-manual-input="pressure" required>
+                        </label>
+                        <label class="filter-field">
+                            <span>CO2</span>
+                            <input type="number" step="1" placeholder="700" data-manual-input="co2" required>
+                        </label>
+                    </div>
+                </div>
+                <div class="manual-actions">
+                    <button class="secondary-button" type="button" data-manual-add-row>＋ 行を追加</button>
+                    <button class="secondary-button" type="button" data-manual-clear>クリア</button>
+                    <button class="secondary-button" type="submit" data-manual-submit>保存</button>
+                </div>
+                <p class="manual-status" data-manual-status aria-live="polite"></p>
+            </form>
         </section>
 
         <section class="filter-panel" aria-label="検索条件" {% if not rows %}hidden{% endif %}>

@@ -492,6 +492,68 @@ h1 {
     margin-bottom: 14px;
 }
 
+.manual-panel {
+    margin-bottom: 14px;
+    padding: 14px;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.manual-panel-header {
+    margin-bottom: 12px;
+}
+
+.manual-panel-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.manual-panel-header p {
+    margin: 6px 0 0;
+    color: #667085;
+    font-size: 14px;
+}
+
+.manual-form {
+    display: grid;
+    gap: 12px;
+}
+
+.manual-rows {
+    display: grid;
+    gap: 12px;
+}
+
+.manual-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    gap: 12px;
+    align-items: end;
+    padding: 12px;
+    border: 1px solid #d7dee8;
+    border-radius: 6px;
+    background: #f8fafc;
+}
+
+.manual-row .filter-field {
+    margin: 0;
+}
+
+.manual-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.manual-status {
+    margin: 0;
+    min-height: 20px;
+    color: #344054;
+    font-size: 14px;
+}
+
 .health-panel-header {
     margin-bottom: 12px;
 }
@@ -1033,6 +1095,15 @@ tbody tr:hover {
 
     .filter-grid {
         grid-template-columns: 1fr;
+    }
+
+    .manual-row {
+        grid-template-columns: 1fr;
+    }
+
+    .manual-actions {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .api-search-form {

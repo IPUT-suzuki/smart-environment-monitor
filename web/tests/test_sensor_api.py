@@ -1,4 +1,5 @@
 import csv
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -96,6 +97,102 @@ class SensorApiTest(unittest.TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"data-csv-download", response.data)
+
+    def test_manual_single_row(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": [
+                {"temperature": 25.0, "humidity": 50.0, "pressure": 1000.0, "co2": 700},
+            ]},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.mimetype, "application/json")
+        payload = response.get_json()
+        self.assertEqual(payload["rows_added"], 1)
+
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+        self.assertEqual(len(rows), 4)
+
+        new_row = rows[-1]
+        self.assertEqual(new_row["client_id"], "web-manual")
+        self.assertEqual(new_row["region"], "web-input")
+        self.assertEqual(new_row["sequence"], "1")
+        self.assertRegex(
+            new_row["datetime"],
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$",
+        )
+        self.assertEqual(new_row["co2"], "700")
+
+    def test_manual_multi_row(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": [
+                {"temperature": 25.0, "humidity": 50.0, "pressure": 1000.0, "co2": 700},
+                {"temperature": 26.0, "humidity": 55.0, "pressure": 1001.0, "co2": 750},
+                {"temperature": 27.0, "humidity": 60.0, "pressure": 1002.0, "co2": 800},
+            ]},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.get_json()
+        self.assertEqual(payload["rows_added"], 3)
+
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+        new_rows = rows[-3:]
+        self.assertEqual([r["sequence"] for r in new_rows], ["1", "2", "3"])
+        session_ids = {r["session_id"] for r in new_rows}
+        self.assertEqual(len(session_ids), 1)
+
+    def test_manual_invalid_temperature(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": [
+                {"temperature": "not-a-number", "humidity": 50.0, "pressure": 1000.0, "co2": 700},
+            ]},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            row_count = sum(1 for _ in csv.DictReader(csv_file))
+        self.assertEqual(row_count, 3)
+
+    def test_manual_missing_co2(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": [
+                {"temperature": 25.0, "humidity": 50.0, "pressure": 1000.0},
+            ]},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_manual_empty_rows(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": []},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_manual_non_json_body(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            data="not json at all",
+            content_type="text/plain",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_dashboard_contains_manual_view_button(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'data-view-button="manual"', response.data)
+        self.assertIn(b"data-manual-submit", response.data)
         self.assertNotIn(b"data-csv-download", response.data)
 
 

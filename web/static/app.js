@@ -68,6 +68,13 @@ const filterControls = document.querySelectorAll("[data-filter-op], [data-filter
 const numericFilterOps = document.querySelectorAll("[data-filter-op='temperature'], [data-filter-op='humidity'], [data-filter-op='pressure'], [data-filter-op='co2']");
 const healthFilterControls = document.querySelectorAll("[data-health-filter]");
 const clearHealthFiltersButton = document.querySelector("[data-clear-health-filters]");
+const manualPanel = document.querySelector("[data-view-panel='manual']");
+const manualForm = document.querySelector("[data-manual-form]");
+const manualRows = document.querySelector("[data-manual-rows]");
+const manualAddRowButton = document.querySelector("[data-manual-add-row]");
+const manualClearButton = document.querySelector("[data-manual-clear]");
+const manualSubmitButton = document.querySelector("[data-manual-submit]");
+const manualStatus = document.querySelector("[data-manual-status]");
 
 const fallbackFieldLabels = {
     client_id: "端末ID",
@@ -110,6 +117,7 @@ function setView(view) {
     activeView = view;
     const showGraph = view === "graph";
     const showHealth = view === "health";
+    const showManual = view === "manual";
     const showSearch = view === "table" || showGraph;
     const hasRows = tableRows.length > 0;
 
@@ -124,7 +132,8 @@ function setView(view) {
     paginationBars.forEach((paginationBar) => {
         paginationBar.hidden = view !== "table" || !hasRows;
     });
-    emptyState.hidden = view !== "table" || hasRows;
+    emptyState.hidden = view !== "table" || hasRows || showManual;
+    manualPanel.hidden = !showManual;
 
     viewButtons.forEach((button) => {
         button.classList.toggle("is-active", button.dataset.viewButton === view);
@@ -1386,6 +1395,116 @@ window.addEventListener("keydown", (event) => {
         closeChartModal();
     }
 });
+function addManualRow() {
+    if (!manualRows) {
+        return;
+    }
+    const template = manualRows.querySelector("[data-manual-row]");
+    if (!template) {
+        return;
+    }
+    const clone = template.cloneNode(true);
+    clone.querySelectorAll("input").forEach((input) => {
+        input.value = "";
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary-button";
+    remove.textContent = "削除";
+    remove.dataset.manualRemoveRow = "";
+    remove.addEventListener("click", () => clone.remove());
+    clone.appendChild(remove);
+    manualRows.appendChild(clone);
+}
+
+function clearManualForm() {
+    if (!manualRows) {
+        return;
+    }
+    const rows = manualRows.querySelectorAll("[data-manual-row]");
+    rows.forEach((row, index) => {
+        if (index === 0) {
+            row.querySelectorAll("input").forEach((input) => {
+                input.value = "";
+            });
+        } else {
+            row.remove();
+        }
+    });
+    if (manualStatus) {
+        manualStatus.textContent = "";
+    }
+}
+
+function collectManualRows() {
+    if (!manualRows) {
+        return [];
+    }
+    const rows = [];
+    manualRows.querySelectorAll("[data-manual-row]").forEach((row) => {
+        const temperature = row.querySelector('[data-manual-input="temperature"]')?.value;
+        const humidity = row.querySelector('[data-manual-input="humidity"]')?.value;
+        const pressure = row.querySelector('[data-manual-input="pressure"]')?.value;
+        const co2 = row.querySelector('[data-manual-input="co2"]')?.value;
+        if (temperature === "" || humidity === "" || pressure === "" || co2 === "") {
+            return;
+        }
+        const t = parseFloat(temperature);
+        const h = parseFloat(humidity);
+        const p = parseFloat(pressure);
+        const c = parseInt(co2, 10);
+        if (!Number.isFinite(t) || !Number.isFinite(h) || !Number.isFinite(p) || !Number.isFinite(c)) {
+            return;
+        }
+        rows.push({ temperature: t, humidity: h, pressure: p, co2: c });
+    });
+    return rows;
+}
+
+async function submitManualForm(event) {
+    event.preventDefault();
+    if (!manualStatus || !manualSubmitButton) {
+        return;
+    }
+    const rows = collectManualRows();
+    if (rows.length === 0) {
+        manualStatus.textContent = "有効な数値を入力してください";
+        return;
+    }
+    manualStatus.textContent = "";
+    manualSubmitButton.disabled = true;
+    try {
+        const response = await fetch("/api/sensor-data/manual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows }),
+        });
+        if (response.ok) {
+            const result = await response.json();
+            manualStatus.textContent = `${result.rows_added} 件を保存しました`;
+            clearManualForm();
+            await refreshDashboardData();
+        } else {
+            const result = await response.json();
+            manualStatus.textContent = result.error || "保存に失敗しました";
+        }
+    } catch (error) {
+        manualStatus.textContent = "通信エラーが発生しました";
+    } finally {
+        manualSubmitButton.disabled = false;
+    }
+}
+
+if (manualAddRowButton) {
+    manualAddRowButton.addEventListener("click", addManualRow);
+}
+if (manualClearButton) {
+    manualClearButton.addEventListener("click", clearManualForm);
+}
+if (manualForm) {
+    manualForm.addEventListener("submit", submitManualForm);
+}
+
 window.addEventListener("resize", () => {
     if (!chartPanel.hidden) {
         drawAllCharts();
