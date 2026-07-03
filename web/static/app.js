@@ -12,6 +12,8 @@ let sortState = { field: "datetime", direction: "desc" };
 let paginationState = { page: 1, pageSize: 25 };
 let chartLimit = 50;
 let modalFilterState = {};
+let selectedHealthClientId = "";
+let healthModalTrigger;
 
 const textFields = ["client_id", "region"];
 const numericFields = ["temperature", "humidity", "pressure", "co2"];
@@ -31,6 +33,13 @@ const chartModalTitle = document.querySelector("[data-chart-modal-title]");
 const chartModalCanvas = document.querySelector("[data-chart-modal-canvas]");
 const chartModalCloseButtons = document.querySelectorAll("[data-chart-modal-close]");
 const chartModalDownloadButton = document.querySelector("[data-chart-modal-download]");
+const healthModal = document.querySelector("[data-health-modal]");
+const healthModalTitle = document.querySelector("[data-health-modal-title]");
+const healthModalMeta = document.querySelector("[data-health-modal-meta]");
+const healthModalStatus = document.querySelector("[data-health-modal-status]");
+const healthModalSummary = document.querySelector("[data-health-modal-summary]");
+const healthModalDetails = document.querySelector("[data-health-modal-details]");
+const healthModalCloseButtons = document.querySelectorAll("[data-health-modal-close]");
 const chartLimitSelect = document.querySelector("[data-chart-limit]");
 const clientIdSuggestions = document.querySelector("#client-id-suggestions");
 const regionSuggestions = document.querySelector("#region-suggestions");
@@ -233,6 +242,7 @@ function updateHealthData(payload) {
     healthClients = payload.clients || [];
     renderHealthSuggestions();
     renderHealth();
+    refreshOpenHealthModal();
 }
 
 function renderHealthSuggestions() {
@@ -279,16 +289,8 @@ function renderHealth() {
         return;
     }
 
-    const expandedClientIds = new Set(
-        [...healthList.querySelectorAll(".health-card[data-client-id] details[open]")]
-            .map((details) => details.closest(".health-card")?.dataset.clientId)
-            .filter(Boolean),
-    );
     const clients = filteredHealthClients();
-    healthList.replaceChildren(...clients.map((client) => createHealthCard(
-        client,
-        expandedClientIds.has(client.client?.client_id),
-    )));
+    healthList.replaceChildren(...clients.map(createHealthCard));
     healthEmpty.hidden = clients.length > 0;
     if (healthClients.length === 0) {
         healthEmptyTitle.textContent = "ヘルスデータがありません";
@@ -299,9 +301,10 @@ function renderHealth() {
     }
 }
 
-function createHealthCard(client, detailsOpen = false) {
+function createHealthCard(client) {
+    const state = healthDisplayState(client);
     const card = document.createElement("article");
-    card.className = "health-card";
+    card.className = `health-card health-card-${state.key}`;
     card.dataset.clientId = client.client?.client_id || "";
     const header = document.createElement("header");
     header.className = "health-card-header";
@@ -311,9 +314,7 @@ function createHealthCard(client, detailsOpen = false) {
     const region = document.createElement("p");
     region.textContent = `${client.client?.region || "地域未設定"} / 最終受信 ${client.received_at || "-"}`;
     title.append(heading, region);
-    const badge = document.createElement("span");
-    badge.className = `health-status health-status-${client.status === "online" ? "online" : "offline"}`;
-    badge.textContent = client.status === "online" ? "オンライン" : "オフライン";
+    const badge = createHealthStatusBadge(state);
     const actions = document.createElement("div");
     actions.className = "health-card-actions";
     const download = document.createElement("a");
@@ -329,13 +330,19 @@ function createHealthCard(client, detailsOpen = false) {
     const errors = healthErrors(client);
     summary.textContent = errors.length ? errors.join(" / ") : "異常は報告されていません";
 
-    const details = document.createElement("details");
-    details.open = detailsOpen;
-    const detailsSummary = document.createElement("summary");
-    detailsSummary.textContent = "詳細を表示";
-    details.appendChild(detailsSummary);
-    const groups = document.createElement("div");
-    groups.className = "health-detail-groups";
+    const detailsButton = document.createElement("button");
+    detailsButton.className = "secondary-button health-details-button";
+    detailsButton.type = "button";
+    detailsButton.dataset.healthDetails = "";
+    detailsButton.textContent = "詳細を表示";
+    detailsButton.setAttribute("aria-label", `${client.client?.client_id || "端末"} のヘルス詳細を表示`);
+    detailsButton.addEventListener("click", () => openHealthModal(client, detailsButton));
+    card.append(header, summary, detailsButton);
+    return card;
+}
+
+function createHealthDetailGroups(client) {
+    const groups = document.createDocumentFragment();
     SENSOR_NAMES.forEach((sensorName) => {
         groups.appendChild(createHealthGroup(sensorName.toUpperCase(), client.sensor?.[sensorName], [
             ["接続", "connect"], ["読み取り", "read"], ["読取成功数", "read_count"],
@@ -354,9 +361,7 @@ function createHealthCard(client, detailsOpen = false) {
     groups.appendChild(createHealthGroup("ランタイム", client.runtime, [
         ["起動時刻", "started_at"], ["最終ループ", "last_loop_at"], ["ループ回数", "loop_count"], ["稼働秒数", "uptime_seconds"],
     ]));
-    details.appendChild(groups);
-    card.append(header, summary, details);
-    return card;
+    return groups;
 }
 
 const SENSOR_NAMES = ["bme280", "dht22", "mhz19c"];
@@ -372,7 +377,33 @@ function healthErrors(client) {
     if (client.server_send && (!client.server_send.success || client.server_send.error)) {
         errors.push(`サーバー送信: ${client.server_send.error || "失敗"}`);
     }
+    if (client.health_report && (!client.health_report.success || client.health_report.error)) {
+        errors.push(`ヘルスレポート: ${client.health_report.error || "失敗"}`);
+    }
     return errors;
+}
+
+function healthDisplayState(client) {
+    if (client.status !== "online") {
+        return { key: "offline", marker: "■", label: "オフライン" };
+    }
+    if (healthErrors(client).length > 0) {
+        return { key: "warning", marker: "▲", label: "オンライン・異常あり" };
+    }
+    return { key: "normal", marker: "●", label: "オンライン・正常" };
+}
+
+function createHealthStatusBadge(state) {
+    const badge = document.createElement("span");
+    badge.className = `health-status health-status-${state.key}`;
+    const marker = document.createElement("span");
+    marker.className = "health-status-marker";
+    marker.setAttribute("aria-hidden", "true");
+    marker.textContent = state.marker;
+    const label = document.createElement("span");
+    label.textContent = state.label;
+    badge.append(marker, label);
+    return badge;
 }
 
 function createHealthGroup(title, values, fields) {
@@ -1092,19 +1123,67 @@ function drawChart(canvas, metric, rows, axisRange = null) {
     ctx.fillText(metricLabels[metric] || metric, padding.left, 8);
 }
 
+function syncModalOpenState() {
+    document.body.classList.toggle("modal-open", !chartModal.hidden || !healthModal.hidden);
+}
+
 function openChartModal(metric) {
     chartModal.dataset.metric = metric;
     chartModalTitle.textContent = `${metricLabels[metric] || metric}グラフ`;
     loadModalFilterState(metric);
     chartModal.hidden = false;
-    document.body.classList.add("modal-open");
+    syncModalOpenState();
     requestAnimationFrame(() => drawModalChart(metric));
 }
 
 function closeChartModal() {
     chartModal.hidden = true;
     chartModal.dataset.metric = "";
-    document.body.classList.remove("modal-open");
+    syncModalOpenState();
+}
+
+function openHealthModal(client, trigger) {
+    selectedHealthClientId = client.client?.client_id || "";
+    healthModalTrigger = trigger;
+    renderHealthModal(client);
+    healthModal.hidden = false;
+    syncModalOpenState();
+    requestAnimationFrame(() => healthModal.querySelector("button[data-health-modal-close]")?.focus());
+}
+
+function renderHealthModal(client) {
+    const clientId = client.client?.client_id || "不明な端末";
+    const errors = healthErrors(client);
+    healthModalTitle.textContent = `${clientId} のヘルス詳細`;
+    healthModalMeta.textContent = `${client.client?.region || "地域未設定"} / 最終受信 ${client.received_at || "-"}`;
+    healthModalStatus.replaceChildren(createHealthStatusBadge(healthDisplayState(client)));
+    healthModalSummary.textContent = errors.length ? errors.join(" / ") : "異常は報告されていません";
+    healthModalDetails.replaceChildren(createHealthDetailGroups(client));
+}
+
+function refreshOpenHealthModal() {
+    if (healthModal.hidden || !selectedHealthClientId) {
+        return;
+    }
+    const client = healthClients.find((item) => item.client?.client_id === selectedHealthClientId);
+    if (client) {
+        renderHealthModal(client);
+    }
+}
+
+function closeHealthModal() {
+    const clientId = selectedHealthClientId;
+    healthModal.hidden = true;
+    selectedHealthClientId = "";
+    syncModalOpenState();
+
+    const currentTrigger = healthModalTrigger?.isConnected
+        ? healthModalTrigger
+        : [...healthList.querySelectorAll(".health-card")]
+            .find((card) => card.dataset.clientId === clientId)
+            ?.querySelector("[data-health-details]");
+    healthModalTrigger = undefined;
+    (currentTrigger || healthFilterControls[0])?.focus();
 }
 
 function drawModalChart(metric) {
@@ -1381,6 +1460,9 @@ chartDownloadButtons.forEach((button) => {
 chartModalCloseButtons.forEach((button) => {
     button.addEventListener("click", closeChartModal);
 });
+healthModalCloseButtons.forEach((button) => {
+    button.addEventListener("click", closeHealthModal);
+});
 chartModalDownloadButton.addEventListener("click", () => {
     downloadChart(chartModal.dataset.metric, chartModalCanvas);
 });
@@ -1391,7 +1473,12 @@ modalFilterControls.forEach((control) => {
 modalChartLimitSelect.addEventListener("change", updateModalFilter);
 modalFilterClearButton.addEventListener("click", clearModalFilter);
 window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !chartModal.hidden) {
+    if (event.key !== "Escape") {
+        return;
+    }
+    if (!healthModal.hidden) {
+        closeHealthModal();
+    } else if (!chartModal.hidden) {
         closeChartModal();
     }
 });

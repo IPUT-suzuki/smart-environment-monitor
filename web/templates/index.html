@@ -369,6 +369,21 @@
             <canvas data-chart-modal-canvas width="1040" height="520"></canvas>
         </section>
     </div>
+    <div class="health-modal" data-health-modal hidden>
+        <div class="health-modal-backdrop" data-health-modal-close></div>
+        <section class="health-modal-panel" role="dialog" aria-modal="true" aria-labelledby="health-modal-title">
+            <header class="health-modal-header">
+                <div>
+                    <h2 id="health-modal-title" data-health-modal-title>端末ヘルス詳細</h2>
+                    <p data-health-modal-meta></p>
+                </div>
+                <button class="secondary-button" type="button" data-health-modal-close>閉じる</button>
+            </header>
+            <div class="health-modal-status" data-health-modal-status></div>
+            <p class="health-summary" data-health-modal-summary></p>
+            <div class="health-detail-groups" data-health-modal-details></div>
+        </section>
+    </div>
     <datalist id="client-id-suggestions"></datalist>
     <datalist id="region-suggestions"></datalist>
     <datalist id="health-client-id-suggestions"></datalist>

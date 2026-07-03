@@ -99,6 +99,14 @@ class SensorApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"data-csv-download", response.data)
 
+    def test_dashboard_contains_health_detail_modal(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"data-health-modal", response.data)
+        self.assertIn(b"data-health-modal-details", response.data)
+        self.assertIn(b'aria-labelledby="health-modal-title"', response.data)
+
     def test_manual_single_row(self):
         response = self.client.post(
             "/api/sensor-data/manual",
