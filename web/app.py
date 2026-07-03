@@ -1,4 +1,5 @@
 import csv
+import fcntl
 import json
 import queue
 import re
@@ -59,6 +60,7 @@ HEALTH_FIELDS = (
 )
 HEALTH_LOCK = threading.Lock()
 HEALTH_STREAM_LOCK = threading.Lock()
+SENSOR_CSV_LOCK = threading.Lock()
 LATEST_HEALTH = {}
 HEALTH_STREAM_SUBSCRIBERS = set()
 
@@ -517,6 +519,79 @@ def health_stream():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+MANUAL_SENSOR_FIELDS = ("temperature", "humidity", "pressure", "co2")
+
+
+def validate_manual_sensor_payload(payload):
+    if not isinstance(payload, dict):
+        return "JSON object is required"
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return "rows must be a list"
+    if not rows:
+        return "rows must not be empty"
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            return f"rows[{index}] must be an object"
+        for field in MANUAL_SENSOR_FIELDS:
+            value = row.get(field)
+            if value is None:
+                return f"rows[{index}].{field} is required"
+            if isinstance(value, bool):
+                return f"rows[{index}].{field} must be a number"
+            if field == "co2":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    return f"rows[{index}].co2 must be an integer"
+            else:
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    return f"rows[{index}].{field} must be a number"
+    return None
+
+
+def append_manual_sensor_rows(rows):
+    now = datetime.now(JST)
+    session_id = now.strftime("web-manual-%Y%m%d%H%M%S")
+    csv_path = find_csv_path()
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    file_exists = csv_path.exists()
+    SENSOR_CSV_FIELDS = [
+        "client_id", "region", "datetime", "session_id", "sequence",
+        "temperature", "humidity", "pressure", "co2",
+    ]
+    with SENSOR_CSV_LOCK:
+        with csv_path.open("a", newline="", encoding="utf-8") as file:
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+            try:
+                writer = csv.DictWriter(file, fieldnames=SENSOR_CSV_FIELDS)
+                if not file_exists:
+                    writer.writeheader()
+                for index, sensor_data in enumerate(rows):
+                    writer.writerow({
+                        "client_id": "web-manual",
+                        "region": "web-input",
+                        "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+                        "session_id": session_id,
+                        "sequence": index + 1,
+                        "temperature": sensor_data["temperature"],
+                        "humidity": sensor_data["humidity"],
+                        "pressure": sensor_data["pressure"],
+                        "co2": sensor_data["co2"],
+                    })
+            finally:
+                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+    return session_id
+
+
+@app.route("/api/sensor-data/manual", methods=["POST"])
+def receive_manual_sensor():
+    payload = request.get_json(silent=True)
+    error = validate_manual_sensor_payload(payload)
+    if error:
+        return jsonify({"error": error}), 400
+    session_id = append_manual_sensor_rows(payload["rows"])
+    return jsonify({"rows_added": len(payload["rows"]), "session_id": session_id}), 201
 
 
 LATEST_HEALTH.update(load_latest_health())
