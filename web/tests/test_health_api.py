@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import app as web_app
+from web import app as web_app
 
 
 def health_payload(client_id="client-a"):
@@ -90,6 +90,21 @@ class HealthApiTest(unittest.TestCase):
     def test_reject_invalid_health_payload(self):
         response = self.client.post("/api/health", json={"client": {}})
         self.assertEqual(response.status_code, 400)
+
+    def test_health_dry_run_validates_without_writing_or_updating_latest(self):
+        response = self.client.post(
+            "/api/health?dry_run=true",
+            json=health_payload(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {
+            "valid": True,
+            "dry_run": True,
+            "client_id": "client-a",
+        })
+        self.assertFalse(web_app.HEALTH_HISTORY_PATH.exists())
+        self.assertEqual(web_app.LATEST_HEALTH, {})
 
     def test_filters_health_by_client_id_and_region(self):
         self.client.post("/api/health", json=health_payload("client-tokyo"))

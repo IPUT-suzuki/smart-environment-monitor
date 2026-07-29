@@ -359,6 +359,42 @@ h1 {
     margin-bottom: 14px;
 }
 
+.average-summary {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.average-summary > p {
+    margin: 0 0 8px;
+    color: #475467;
+    font-size: 14px;
+}
+
+.average-summary dl {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.average-summary dl > div {
+    min-width: 0;
+}
+
+.average-summary dt {
+    color: #667085;
+    font-size: 13px;
+}
+
+.average-summary dd {
+    margin: 3px 0 0;
+    color: #1f2933;
+    font-weight: 700;
+}
+
 .view-toggle {
     display: inline-flex;
     overflow: hidden;

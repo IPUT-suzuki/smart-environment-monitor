@@ -6,7 +6,7 @@
 # Modification of Zoltan Szarvas's library with RPI.GPIO.
 # https://github.com/szazo/DHT11_Python.git
 #
-# This class is a refactoring of a library 
+# This class is a refactoring of a library
 # originally written by Zoltan Szarvas using RPi.GPIO,
 # converted to use the lgpio library.
 #
@@ -21,19 +21,19 @@
 #
 #
 # MIT License
-# 
+#
 # Copyright (c) 2025 Michiharu Takemoto <takemoto.development@gmail.com>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -41,7 +41,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-# 
+#
 
 
 import time
@@ -117,7 +117,7 @@ class DHT22:
             temperature = float(temp_raw) / 10.0
 
         return temperature, humidity, checksum
-        
+
     def __send_and_sleep(self, output, sleep):
         lgpio.gpio_write(self.__h, self.__gpio, output)
         time.sleep(sleep)
@@ -144,7 +144,7 @@ class DHT22:
                     break
 
         return data
-    
+
     def __parse_data_pull_up_lengths(self, data):
         STATE_INIT_PULL_DOWN = 1
         STATE_INIT_PULL_UP = 2
@@ -225,7 +225,7 @@ class DHT22:
             bits.append(bit)
 
         return bits
-    
+
     def __bits_to_bytes(self, bit_list0):
         bytes = []
         length = len(bit_list0)
@@ -233,7 +233,7 @@ class DHT22:
 
         for i in range(0, length):
             byte_d = byte_d << 1
-            
+
             if (1 == bit_list0[i]):
                 byte_d = byte_d | 1
             else:
@@ -248,10 +248,10 @@ class DHT22:
     def __calculate_checksum(self, bytes0):
         checksum = (bytes0[0] & 0xff) + (bytes0[1] & 0xff) + (bytes0[2] & 0xff) + (bytes0[3] & 0xff)
         return checksum & 0xFF
-    
+
     def close(self):
         lgpio.gpiochip_close(self.__h)  # Close gpiochip0
- 
+
 
 if __name__ == '__main__':
     import datetime

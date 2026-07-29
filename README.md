@@ -1,218 +1,133 @@
 # Smart Environment Monitor
 
-Raspberry Pi 上の温湿度・気圧・CO2 センサーを監視し、TCP で収集サーバーへ保存したデータを Web ダッシュボードで確認するシステムです。
+Raspberry Pi のセンサノードが温度・湿度・気圧・CO₂を測定し、TCP受信サーバーへ保存、Flaskダッシュボードで閲覧するモノレポです。測定データとヘルス履歴は共有CSVに保存しますが、`server` と `web` はWindows・Linuxの双方で動く共通のプロセス間ロックで安全に連携します。
+
+## 主な機能
+
+- DHT22、BME280、MH-Z19C の読み取り、完全なスナップショットだけのTCP送信とACK検証
+- 重複排除されたCSV保存、複数クライアントの同時接続
+- 検索、数値・日時ソート、ページング、グラフ、抽出結果全体の平均値、PNG保存
+- センサー送信形式と同じ4測定値・桁数による手動登録、測定CSVと端末別ヘルス履歴CSVのダウンロード
+- ヘルス状態、SSE更新、Discordの異常・復旧通知
 
 ## 構成
 
-```text
-client (Raspberry Pi + sensors)
-  ├─ BME280 / DHT22 / MH-Z19C を読み取り
-  ├─ TCP JSON Lines で server へ送信
-  ├─ ヘルス情報を Web へ HTTP POST
-  └─ 必要に応じて Discord へ通知
-
-server
-  └─ 受信データを data/sensor_data.csv へ保存
-
-web
-  ├─ CSV の一覧・グラフ・ヘルス状態を表示
-  └─ JSON API と API ドキュメントを提供
+```mermaid
+flowchart LR
+    C[client<br>Raspberry Pi] -->|TCP JSON Lines :9000| S[server<br>receiver]
+    S -->|sensor_data.csv| D[(data/)]
+    C -->|HTTP health| W[web<br>Flask :5000]
+    W <-->|read / manual write| D
+    C -. Discord webhook .-> N[Discord]
+    B[Browser] --> W
 ```
 
-| ディレクトリ | 役割 |
+| ディレクトリ | 責務 |
 | --- | --- |
-| `client/` | センサー読み取り、TCP 送信、ヘルスレポート、Discord 通知 |
-| `server/` | TCP JSON Lines の受信、重複排除、CSV 保存 |
-| `web/` | Flask ダッシュボード、ヘルス受信、JSON API |
-| `data/` | `sensor_data.csv` と `health_history.csv` の保存先 |
+| [`client/`](./client/README.md) | センサ読み取り、TCP送信、ヘルス送信、通知 |
+| [`server/`](./server/README.md) | TCP受信、検証、重複排除、測定CSV保存 |
+| [`web/`](./web/README.md) | Flask画面・API、検索、手動入力、ヘルス履歴 |
+| [`common/`](./common) | 測定値検証、CSVスキーマ、クロスプラットフォームロック |
+| [`data/`](./data) | 実行時CSV（内容はGit管理しない） |
 
-TCP の送信形式とヘルスレポートの詳細は [client/docs/data-transmission.md](client/docs/data-transmission.md) を参照してください。
+## 使用技術・ポート
 
-## 前提条件
+Python 3.10以上、Flask、Python標準ライブラリのTCPソケット、CSV、Server-Sent Eventsを使います。センサノードはRaspberry PiとDHT22、BME280、MH-Z19Cを使用します。
 
-- Python 3.13 以上
-- Raspberry Pi でクライアントを動かす場合: BME280、DHT22、MH-Z19C と必要な I2C / GPIO / UART 設定
-- クライアント、サーバー、Web が互いに通信できるネットワーク
-
-依存パッケージをインストールします。
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-## 設定
-
-クライアントとサーバーはそれぞれのディレクトリにある `.env` を読み込みます。`.env` は Git 管理対象外です。
-
-`server/.env`:
-
-```dotenv
-SERVER_ADDR=0.0.0.0
-SERVER_PORT=9000
-
-# CSV 保存先（リポジトリルートからの相対パスまたは絶対パス）
-SENSOR_DATA_PATH=data/sensor_data.csv
-
-# TCP 動作設定
-TCP_ACCEPT_TIMEOUT_SECONDS=0.5
-TCP_CONNECTION_TIMEOUT_SECONDS=10
-TCP_MAX_REQUEST_BYTES=1048576
-TCP_SHUTDOWN_TIMEOUT_SECONDS=2
-```
-
-`client/.env`:
-
-```dotenv
-SERVER_ADDR=192.168.1.10
-SERVER_PORT=9000
-CLIENT_ID=123456
-CLIENT_REGION=tokyo
-
-# 任意の送信先
-WEB_HEALTH_URL=http://192.168.1.20:5000/api/health
-DISCORD_WEBHOOK_URL=
-
-# 実行周期と通知しきい値
-SEND_INTERVAL_SECONDS=4
-HEARTBEAT_INTERVAL_SECONDS=10
-SENSOR_FAILURE_NOTIFY_THRESHOLD=3
-HEALTH_REPORT_FAILURE_NOTIFY_THRESHOLD=3
-SERVER_SEND_FAILURE_NOTIFY_THRESHOLD=3
-
-# センサー接続設定
-DHT22_GPIO=26
-BME280_ADDR=0x76
-SERIAL_PORT=/dev/serial0
-SERIAL_BAUDRATE=9600
-SERIAL_TIMEOUT_SECONDS=1
-
-# 外部通信タイムアウト
-TCP_TIMEOUT_SECONDS=5
-WEB_HEALTH_TIMEOUT_SECONDS=5
-DISCORD_TIMEOUT_SECONDS=5
-```
-
-新規セットアップ時は `client/.env.example` を `client/.env` にコピーし、端末固有の値を変更します。`SEND_INTERVAL_SECONDS` などの追加項目を省略した場合は、上記の既定値を使います。
-
-`web/.env`:
-
-```dotenv
-# Flask 待受設定
-WEB_HOST=0.0.0.0
-WEB_PORT=5000
-WEB_DEBUG=false
-
-# 保存先
-SENSOR_DATA_PATH=data/sensor_data.csv
-HEALTH_HISTORY_PATH=data/health_history.csv
-
-# ヘルス状態と SSE
-HEALTH_OFFLINE_AFTER_SECONDS=30
-HEALTH_STREAM_RETRY_MILLISECONDS=3000
-HEALTH_STREAM_KEEPALIVE_SECONDS=15
-```
-
-新規セットアップ時は、各ディレクトリの `.env.example` を `.env` にコピーします。パスはリポジトリルートからの相対パスまたは絶対パスで指定できます。
-
-## 起動
-
-次の順で起動します。
-
-1. 収集サーバー
-
-   ```bash
-   cd server
-   python main.py --mode main
-   ```
-
-2. Web ダッシュボード
-
-   ```bash
-   cd web
-   python app.py
-   ```
-
-   `http://<Webサーバー>:5000/` を開きます。API ドキュメントは `http://<Webサーバー>:5000/api/docs` です。
-
-3. センサークライアント
-
-   ```bash
-   cd client
-   python main.py --mode main
-   ```
-
-開発時は実機センサーなしでダミー値を送信できます。
-
-```bash
-cd client
-python main.py --mode mock --iterations 10 --no-notify
-```
-
-`--server-addr`、`--server-port` で送信先を一時的に上書きできます。`--debug` を付けると詳細ログを出力します。
-
-## データ保存
-
-サーバーは `data/sensor_data.csv` を作成し、次の順で保存します。
-
-```text
-client_id, region, datetime, session_id, sequence,
-temperature, humidity, pressure, co2
-```
-
-同じ `client_id`、`session_id`、`sequence` の組合せは重複として保存しません。Web はセンサーデータを日時の新しい順で表示・API 返却します。
-
-ヘルスレポートは Web が `data/health_history.csv` に保存し、端末ごとの最新状態を表示します。各端末カードの「CSV保存」から、その端末の全保存履歴をダウンロードできます。最終受信から 30 秒を超える端末はオフラインになります。
-
-## Web API
-
-API のリクエスト例、実行フォーム、実際のレスポンス確認は Web の `http://<Webサーバー>:5000/api/docs` にあります。
-
-| メソッド | エンドポイント | 内容 |
+| サービス | ポート | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/sensor-data` | 全センサーデータ |
-| `GET` | `/api/sensor-data/search` | 端末ID、地域、日時、各測定値で検索 |
-| `GET` | `/api/health` | 最新ヘルス状態。`client_id` と `region` の部分一致検索に対応 |
-| `GET` | `/api/health/<client_id>/download` | 指定端末の全ヘルス履歴をCSVでダウンロード |
-| `POST` | `/api/health` | クライアントからヘルスレポートを受信 |
-| `GET` | `/api/health/stream` | ヘルス更新の Server-Sent Events |
+| `server` | TCP 9000 | センサ測定JSONとACK |
+| `web` | HTTP 5000 | ダッシュボード、API、SSE |
 
-例:
+## 全体セットアップと起動順
+
+リポジトリのルートで実行します。先に `server`、次に `web`、最後に `client` を起動します。各`.env`はサンプル値のまま使わず、接続先と端末IDを環境に合わせて編集してください。
+
+Linux / Raspberry Pi:
 
 ```bash
-curl 'http://localhost:5000/api/sensor-data/search?client_id=TK&temperature_min=25'
-curl 'http://localhost:5000/api/health?region=tokyo'
+git clone https://github.com/IPUT-suzuki/smart-environment-monitor.git
+cd smart-environment-monitor
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r server/requirements.txt
+pip install -r web/requirements.txt
+pip install -r client/requirements.txt
+cp server/.env.example server/.env
+cp web/.env.example web/.env
+cp client/.env.example client/.env
+python -m server.main
+```
+
+別のターミナルで:
+
+```bash
+cd smart-environment-monitor
+source .venv/bin/activate
+python -m web.app
+```
+
+さらに別のターミナルで:
+
+```bash
+cd smart-environment-monitor
+source .venv/bin/activate
+python -m client.main --mode main
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/IPUT-suzuki/smart-environment-monitor.git
+cd smart-environment-monitor
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r server/requirements.txt
+pip install -r web/requirements.txt
+Copy-Item server/.env.example server/.env
+Copy-Item web/.env.example web/.env
+python -m server.main
+```
+
+Windows上ではセンサノードを実機モードで使わず、別のRaspberry Piで `client` を動かしてください。開発用のダミー送信は任意OSで次のように実行できます。
+
+```powershell
+python -m client.main --mode mock --iterations 10 --no-notify
 ```
 
 ## テスト
 
-Web API テスト:
-
 ```bash
-cd web
-python -m unittest discover -s tests -v
+python -m unittest discover -s client/tests -v
+python -m unittest discover -s server/tests -v
+python -m unittest discover -s web/tests -v
+python -m server.main --mode test --target roundtrip --count 10
 ```
 
-TCP のクライアント・サーバー結合テスト:
+`client`の実機センサー試験、Discord実送信、スマートフォン実機での操作は自動テストとは別です。手順は各サービスのREADMEと[テスト仕様](./docs/testing.md)を参照してください。
 
-```bash
-cd server
-python main.py --mode test --target roundtrip --count 10
-```
+## 各システム
 
-実機センサー個別テスト:
+- [センサノード](./client/README.md)
+- [データ受信サーバ](./server/README.md)
+- [Webサーバ](./web/README.md)
 
-```bash
-cd client
-python main.py --mode test --target bme280
-python main.py --mode test --target dht22
-python main.py --mode test --target mhz19c
-python main.py --mode test --target notification
-```
+## システム仕様
 
-## 運用上の注意
+- [要求仕様](./docs/requirements.md)
+- [システム構成](./docs/architecture.md)
+- [データフロー](./docs/data-flow.md)
+- [通信仕様](./docs/communication-specification.md)
+- [CSV仕様](./docs/csv-specification.md)
+- [Web API仕様](./web/docs/api.md)
+- [テスト仕様](./docs/testing.md)
+- [実装監査結果](./docs/implementation-audit.md)
+- [リポジトリ構成](./docs/repository-structure.md)
 
-- 現在の TCP 受信と Web API に認証はありません。信頼できる LAN 内で使い、外部公開する場合はリバースプロキシ、認証、TLS、ファイアウォールを追加してください。
-- CSV は継続的に増加します。必要に応じてバックアップ、ローテーション、保管期間を設定してください。
-- センサーの読み取りに失敗した場合はデータ送信を行わず、ヘルス状態と通知で確認できます。
+## 既知の制約とセキュリティ
+
+TCPとWeb APIには認証・TLSがありません。信頼できるLANだけで使用し、外部公開時はTLS終端、認証、ファイアウォールを追加してください。CSVは小規模な個人環境向けです。長期保管や高頻度・多数端末の運用ではDBと認証基盤への移行を検討してください。
+
+実測CSV、`.env`、ロックディレクトリ、一時移行ファイルはGit管理しません。Webhookや実在IPをコミットしないでください。

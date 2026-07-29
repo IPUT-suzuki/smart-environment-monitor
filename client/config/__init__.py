@@ -1,4 +1,4 @@
-from config.settings import (
+from client.config.settings import (
     BME280_ADDR,
     CLIENT_ID,
     CLIENT_REGION,

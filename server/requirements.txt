@@ -1,0 +1,2 @@
+# TCP receiver runtime dependencies.
+python-dotenv==1.2.2

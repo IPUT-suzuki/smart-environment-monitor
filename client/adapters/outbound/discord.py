@@ -3,8 +3,8 @@ import logging
 import urllib.error
 import urllib.request
 
-from app.logging import log_debug_data
-from config.settings import DISCORD_TIMEOUT_SECONDS
+from client.app.logging import log_debug_data
+from client.config.settings import DISCORD_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 

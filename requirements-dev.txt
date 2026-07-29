@@ -1,0 +1,4 @@
+# Install all service dependencies for local development and automated tests.
+-r client/requirements.txt
+-r server/requirements.txt
+-r web/requirements.txt

@@ -1,6 +1,6 @@
 import logging
 
-from adapters.sensors.lib.dht22_takemoto import DHT22, DHT22CRCError, DHT22MissingDataError
+from client.adapters.sensors.lib.dht22_takemoto import DHT22, DHT22CRCError, DHT22MissingDataError
 
 logger = logging.getLogger(__name__)
 

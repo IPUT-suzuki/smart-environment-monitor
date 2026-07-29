@@ -4,13 +4,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import app as web_app
+from web import app as web_app
 
 
 SENSOR_FIELDS = [
     "client_id", "region", "datetime", "session_id", "sequence",
     "temperature", "humidity", "pressure", "co2",
 ]
+
+
+def manual_row(**overrides):
+    row = {
+        "temperature": 25.0,
+        "humidity": 50.0,
+        "pressure": 1000.0,
+        "co2": 700,
+    }
+    row.update(overrides)
+    return row
 
 
 class SensorApiTest(unittest.TestCase):
@@ -84,20 +95,75 @@ class SensorApiTest(unittest.TestCase):
         response = self.client.get("/api/docs")
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b"api-reference", response.data)
         self.assertIn(b"/api/sensor-data/search", response.data)
+        self.assertIn(b"/api/sensor-data/download", response.data)
+        self.assertIn(b"/api/sensor-data/manual", response.data)
         self.assertIn(b"/api/health/&lt;client_id&gt;/download", response.data)
         self.assertIn(b"data-api-search-form", response.data)
+        self.assertIn(b"data-api-body-target", response.data)
+        self.assertIn(b"data-health-download-form", response.data)
         self.assertIn(b"data-health-stream-start", response.data)
         self.assertIn(b"api-toc", response.data)
         self.assertIn(b"data-copy-api-url", response.data)
         self.assertIn(b"data-api-result", response.data)
-        self.assertNotIn(b'id="api-health-post"', response.data)
+        self.assertIn(b'id="health-post"', response.data)
+        self.assertEqual(response.data.count(b"data-api-write-toggle>"), 2)
+        self.assertEqual(response.data.count(b'data-safe-label="'), 2)
+        self.assertIn(b"rows[].temperature", response.data)
+        self.assertIn(b"rows[].humidity", response.data)
 
-    def test_dashboard_has_no_sensor_csv_download_button(self):
+    def test_api_markdown_documents_every_operation(self):
+        api_document = (
+            Path(web_app.__file__).resolve().parent / "docs" / "api.md"
+        ).read_text(encoding="utf-8")
+
+        expected_operations = (
+            "GET `/api/sensor-data`",
+            "GET `/api/sensor-data/search`",
+            "GET `/api/sensor-data/download`",
+            "POST `/api/sensor-data/manual`",
+            "GET `/api/health`",
+            "POST `/api/health`",
+            "GET `/api/health/<client_id>/download`",
+            "GET `/api/health/stream`",
+        )
+        for operation in expected_operations:
+            with self.subTest(operation=operation):
+                self.assertIn(operation, api_document)
+        self.assertIn("認証とTLSは実装されていません", api_document)
+        self.assertIn("HEALTH_STREAM_KEEPALIVE_SECONDS", api_document)
+        self.assertIn("`dry_run=true`", api_document)
+
+    def test_api_parameter_tables_do_not_overflow_the_console(self):
+        api_styles = (
+            Path(web_app.__file__).resolve().parent / "static" / "api-reference.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("table-layout: fixed;", api_styles)
+        self.assertIn("overflow-wrap: anywhere;", api_styles)
+
+    def test_dashboard_has_sensor_csv_download_button_and_average_summary(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"data-csv-download", response.data)
+        self.assertIn(b"data-csv-download", response.data)
+        self.assertIn(b'data-average="temperature"', response.data)
+
+    def test_sensor_empty_state_has_a_dedicated_selector(self):
+        response = self.client.get("/")
+        script = (Path(web_app.__file__).resolve().parent / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn(b"data-sensor-empty", response.data)
+        self.assertIn('document.querySelector("[data-sensor-empty]")', script)
+        self.assertNotIn('document.querySelector(".empty-state")', script)
+
+    def test_average_summary_is_scoped_to_data_and_graph_views(self):
+        response = self.client.get("/")
+        script = (Path(web_app.__file__).resolve().parent / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn(b"data-average-summary", response.data)
+        self.assertIn('averageSummary.hidden = !["table", "graph"].includes(view);', script)
 
     def test_dashboard_contains_health_detail_modal(self):
         response = self.client.get("/")
@@ -110,9 +176,7 @@ class SensorApiTest(unittest.TestCase):
     def test_manual_single_row(self):
         response = self.client.post(
             "/api/sensor-data/manual",
-            json={"rows": [
-                {"temperature": 25.0, "humidity": 50.0, "pressure": 1000.0, "co2": 700},
-            ]},
+            json={"rows": [manual_row()]},
         )
 
         self.assertEqual(response.status_code, 201)
@@ -133,6 +197,44 @@ class SensorApiTest(unittest.TestCase):
             r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$",
         )
         self.assertEqual(new_row["co2"], "700")
+        self.assertEqual(new_row["temperature"], "25.0")
+        self.assertEqual(new_row["humidity"], "50.0")
+        self.assertEqual(new_row["pressure"], "1000.0")
+
+    def test_manual_dry_run_validates_without_writing(self):
+        response = self.client.post(
+            "/api/sensor-data/manual?dry_run=true",
+            json={"rows": [manual_row()]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {
+            "valid": True,
+            "dry_run": True,
+            "rows_validated": 1,
+        })
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+        self.assertEqual(len(rows), 3)
+
+    def test_invalid_dry_run_never_writes(self):
+        response = self.client.post(
+            "/api/sensor-data/manual?dry_run=maybe",
+            json={"rows": [manual_row()]},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+        self.assertEqual(len(rows), 3)
+
+    def test_dashboard_manual_input_uses_real_registration_endpoint(self):
+        dashboard_script = (
+            Path(web_app.__file__).resolve().parent / "static" / "app.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('fetch("/api/sensor-data/manual"', dashboard_script)
+        self.assertNotIn("/api/sensor-data/manual?dry_run", dashboard_script)
 
     def test_manual_multi_row(self):
         response = self.client.post(
@@ -168,15 +270,97 @@ class SensorApiTest(unittest.TestCase):
             row_count = sum(1 for _ in csv.DictReader(csv_file))
         self.assertEqual(row_count, 3)
 
-    def test_manual_missing_co2(self):
+    def test_manual_rejects_incomplete_sensor_snapshot(self):
         response = self.client.post(
             "/api/sensor-data/manual",
-            json={"rows": [
-                {"temperature": 25.0, "humidity": 50.0, "pressure": 1000.0},
-            ]},
+            json={"rows": [{"temperature": 25.0}]},
         )
 
         self.assertEqual(response.status_code, 400)
+        with self.csv_path.open("r", encoding="utf-8") as csv_file:
+            rows = list(csv.DictReader(csv_file))
+        self.assertEqual(len(rows), 3)
+
+    def test_manual_rejects_non_finite_numbers(self):
+        for field in ("temperature", "humidity", "pressure", "co2"):
+            for value in (float("nan"), float("inf"), float("-inf")):
+                with self.subTest(field=field, value=value):
+                    response = self.client.post(
+                        "/api/sensor-data/manual",
+                        json={"rows": [manual_row(**{field: value})]},
+                    )
+                    self.assertEqual(response.status_code, 400)
+
+    def test_manual_rejects_sensor_values_with_wrong_precision(self):
+        invalid_values = {
+            "temperature": 25.12,
+            "humidity": 50.12,
+            "pressure": 1000.12,
+            "co2": 700.5,
+        }
+        for field, value in invalid_values.items():
+            with self.subTest(field=field):
+                response = self.client.post(
+                    "/api/sensor-data/manual",
+                    json={"rows": [manual_row(**{field: value})]},
+                )
+                self.assertEqual(response.status_code, 400)
+
+    def test_manual_rejects_unknown_measurement_field(self):
+        response = self.client.post(
+            "/api/sensor-data/manual",
+            json={"rows": [manual_row(voltage=3.3)]},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_sensor_csv_download_uses_filters_sort_and_utf8_bom(self):
+        response = self.client.get(
+            "/api/sensor-data/download",
+            query_string={
+                "client_id": "TK-001",
+                "client_id_match": "equals",
+                "temperature_min": "25",
+                "sort_by": "temperature",
+                "sort_order": "asc",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "text/csv")
+        self.assertTrue(response.data.startswith(b"\xef\xbb\xbf"))
+        rows = list(csv.DictReader(response.data.decode("utf-8-sig").splitlines()))
+        self.assertEqual([row["sequence"] for row in rows], ["3"])
+        self.assertRegex(response.headers["Content-Disposition"], r'sensor-data-\d{8}-\d{6}\.csv')
+
+    def test_sensor_csv_download_returns_header_for_no_matches(self):
+        response = self.client.get("/api/sensor-data/download?client_id=missing&client_id_match=equals")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.startswith(b"\xef\xbb\xbfclient_id,region,"))
+        self.assertEqual(len(response.data.decode("utf-8-sig").splitlines()), 1)
+
+    def test_averages_ignore_blank_and_invalid_values(self):
+        rows = [
+            {"temperature": "10", "humidity": "", "pressure": "1000", "co2": "400"},
+            {"temperature": "20", "humidity": "NaN", "pressure": "", "co2": "600"},
+            {"temperature": "invalid", "humidity": "50", "pressure": "1010", "co2": ""},
+        ]
+
+        self.assertEqual(web_app.calculate_averages(rows), {
+            "temperature": 15.0,
+            "humidity": 50.0,
+            "pressure": 1005.0,
+            "co2": 500.0,
+        })
+
+    def test_averages_report_no_data_as_null(self):
+        self.assertEqual(web_app.calculate_averages([]), {
+            "temperature": None,
+            "humidity": None,
+            "pressure": None,
+            "co2": None,
+        })
 
     def test_manual_empty_rows(self):
         response = self.client.post(
@@ -201,7 +385,10 @@ class SensorApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'data-view-button="manual"', response.data)
         self.assertIn(b"data-manual-submit", response.data)
-        self.assertNotIn(b"data-csv-download", response.data)
+        self.assertIn(b'data-manual-input="humidity" required', response.data)
+        self.assertIn(b'data-manual-input="pressure" required', response.data)
+        self.assertIn(b'data-manual-input="co2" required', response.data)
+        self.assertIn(b"data-csv-download", response.data)
 
 
 if __name__ == "__main__":

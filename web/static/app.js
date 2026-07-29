@@ -62,10 +62,15 @@ const tableBody = document.querySelector("tbody");
 const toolbar = document.querySelector(".toolbar");
 const filterPanel = document.querySelector(".filter-panel");
 const paginationBars = document.querySelectorAll(".pagination-bar");
-const emptyState = document.querySelector(".empty-state");
+// Health and sensor data each have an empty-state panel.  Target the sensor
+// panel explicitly so a refresh cannot leave the wrong panel visible.
+const sensorEmptyState = document.querySelector("[data-sensor-empty]");
 const refreshButton = document.querySelector("[data-refresh-button]");
 const clearFiltersButton = document.querySelector("[data-clear-filters]");
 const sensorSummary = document.querySelector("[data-sensor-summary]");
+const averageSummary = document.querySelector("[data-average-summary]");
+const averageValues = document.querySelectorAll("[data-average]");
+const csvDownloadButton = document.querySelector("[data-csv-download]");
 const pageSummaries = document.querySelectorAll("[data-page-summary]");
 const pageCurrentLabels = document.querySelectorAll("[data-page-current]");
 const pageSizeSelects = document.querySelectorAll("[data-page-size]");
@@ -141,8 +146,9 @@ function setView(view) {
     paginationBars.forEach((paginationBar) => {
         paginationBar.hidden = view !== "table" || !hasRows;
     });
-    emptyState.hidden = view !== "table" || hasRows || showManual;
+    sensorEmptyState.hidden = view !== "table" || hasRows || showManual;
     manualPanel.hidden = !showManual;
+    averageSummary.hidden = !["table", "graph"].includes(view);
 
     viewButtons.forEach((button) => {
         button.classList.toggle("is-active", button.dataset.viewButton === view);
@@ -435,6 +441,7 @@ function updateDataViews(options = {}) {
 
     renderTable();
     renderPagination();
+    renderAverages(filteredRows);
 
     if (!chartPanel.hidden) {
         drawAllCharts();
@@ -451,6 +458,61 @@ function renderSummary(payload) {
     }
 
     sensorSummary.textContent = `${payload.csv_path} / ${payload.row_count} 件`;
+}
+
+function renderAverages(rows) {
+    const units = { temperature: "°C", humidity: "%", pressure: "hPa", co2: "ppm" };
+    averageValues.forEach((element) => {
+        const metric = element.dataset.average;
+        const values = rows
+            .map((row) => Number.parseFloat(row[metric]))
+            .filter((value) => Number.isFinite(value));
+        if (values.length === 0) {
+            element.textContent = "データなし";
+            return;
+        }
+        const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+        element.textContent = `${formatValue(average)} ${units[metric] || ""}`.trim();
+    });
+}
+
+function downloadSensorCsv() {
+    const params = new URLSearchParams();
+    textFields.forEach((field) => {
+        const value = filterValue(field).trim();
+        if (value) {
+            params.set(field, value);
+            params.set(`${field}_match`, filterOp(field) || "contains");
+        }
+    });
+    ["datetime_from", "datetime_to"].forEach((field) => {
+        const type = field.endsWith("_from") ? "min" : "max";
+        const value = document.querySelector(`[data-filter-${type}="datetime"]`)?.value;
+        if (value) {
+            params.set(field, value);
+        }
+    });
+    numericFields.forEach((field) => {
+        const operation = filterOp(field);
+        if (operation === "equals") {
+            const value = numericInputValue(field, "value");
+            if (value !== null) {
+                params.set(field, String(value));
+            }
+            return;
+        }
+        const min = numericInputValue(field, "min");
+        const max = numericInputValue(field, "max");
+        if (min !== null) {
+            params.set(`${field}_min`, String(min));
+        }
+        if (max !== null) {
+            params.set(`${field}_max`, String(max));
+        }
+    });
+    params.set("sort_by", sortState.field || "datetime");
+    params.set("sort_order", sortState.direction || "desc");
+    window.location.assign(`/api/sensor-data/download?${params.toString()}`);
 }
 
 function renderTable() {
@@ -834,7 +896,7 @@ function renderEmptyState() {
     paginationBars.forEach((paginationBar) => {
         paginationBar.hidden = !hasRows || currentView() !== "table";
     });
-    emptyState.hidden = hasRows || currentView() !== "table";
+    sensorEmptyState.hidden = hasRows || currentView() !== "table";
 
     if (!hasRows) {
         chartPanel.hidden = true;
@@ -1528,24 +1590,37 @@ function collectManualRows() {
         return [];
     }
     const rows = [];
+    let invalid = false;
     manualRows.querySelectorAll("[data-manual-row]").forEach((row) => {
         const temperature = row.querySelector('[data-manual-input="temperature"]')?.value;
         const humidity = row.querySelector('[data-manual-input="humidity"]')?.value;
         const pressure = row.querySelector('[data-manual-input="pressure"]')?.value;
         const co2 = row.querySelector('[data-manual-input="co2"]')?.value;
-        if (temperature === "" || humidity === "" || pressure === "" || co2 === "") {
+        const values = { temperature, humidity, pressure, co2 };
+        if (Object.values(values).every((value) => value === "")) {
             return;
         }
-        const t = parseFloat(temperature);
-        const h = parseFloat(humidity);
-        const p = parseFloat(pressure);
-        const c = parseInt(co2, 10);
-        if (!Number.isFinite(t) || !Number.isFinite(h) || !Number.isFinite(p) || !Number.isFinite(c)) {
-            return;
+        const sensorData = {};
+        for (const [field, value] of Object.entries(values)) {
+            if (value === "") {
+                invalid = true;
+                return;
+            }
+            const numeric = Number(value);
+            const hasOneDecimalAtMost = Math.abs((numeric * 10) - Math.round(numeric * 10)) < 1e-9;
+            if (
+                !Number.isFinite(numeric)
+                || (field === "co2" && !Number.isInteger(numeric))
+                || (field !== "co2" && !hasOneDecimalAtMost)
+            ) {
+                invalid = true;
+                return;
+            }
+            sensorData[field] = numeric;
         }
-        rows.push({ temperature: t, humidity: h, pressure: p, co2: c });
+        rows.push(sensorData);
     });
-    return rows;
+    return invalid ? null : rows;
 }
 
 async function submitManualForm(event) {
@@ -1554,8 +1629,8 @@ async function submitManualForm(event) {
         return;
     }
     const rows = collectManualRows();
-    if (rows.length === 0) {
-        manualStatus.textContent = "有効な数値を入力してください";
+    if (!rows || rows.length === 0) {
+        manualStatus.textContent = "4項目すべて必須です。温度・湿度・気圧は小数第1位まで、CO2は整数で入力してください";
         return;
     }
     manualStatus.textContent = "";
@@ -1590,6 +1665,9 @@ if (manualClearButton) {
 }
 if (manualForm) {
     manualForm.addEventListener("submit", submitManualForm);
+}
+if (csvDownloadButton) {
+    csvDownloadButton.addEventListener("click", downloadSensorCsv);
 }
 
 window.addEventListener("resize", () => {

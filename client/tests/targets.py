@@ -2,7 +2,7 @@
 import logging
 from collections.abc import Callable
 
-from config.settings import BME280_ADDR, DHT22_GPIO, DISCORD_WEBHOOK_URL, SERIAL_BAUDRATE, SERIAL_PORT, SERIAL_TIMEOUT
+from client.config.settings import BME280_ADDR, DHT22_GPIO, DISCORD_WEBHOOK_URL, SERIAL_BAUDRATE, SERIAL_PORT, SERIAL_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -19,28 +19,28 @@ def _read_sensor(name: str, sensor) -> None:
 
 
 def test_notification() -> None:
-    from adapters.outbound.discord import notify_discord
+    from client.adapters.outbound.discord import notify_discord
 
     if not notify_discord(DISCORD_WEBHOOK_URL, "smart-environment-monitor notification test"):
         raise RuntimeError("Discord notification test failed")
 
 
 def test_dht22() -> None:
-    from adapters.sensors.dht22 import DHT22Sensor
+    from client.adapters.sensors.dht22 import DHT22Sensor
 
     sensor = DHT22Sensor(DHT22_GPIO)
     _read_sensor("DHT22", sensor)
 
 
 def test_bme280() -> None:
-    from adapters.sensors.bme280 import BME280Sensor
+    from client.adapters.sensors.bme280 import BME280Sensor
 
     sensor = BME280Sensor(BME280_ADDR)
     _read_sensor("BME280", sensor)
 
 
 def test_mhz19c() -> None:
-    from adapters.sensors.mhz19c import MHZ19CSensor
+    from client.adapters.sensors.mhz19c import MHZ19CSensor
 
     sensor = MHZ19CSensor(SERIAL_PORT, SERIAL_BAUDRATE, SERIAL_TIMEOUT)
     _read_sensor("MH-Z19C", sensor)

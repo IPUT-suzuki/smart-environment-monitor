@@ -2,9 +2,9 @@ import json
 import logging
 import socket
 
-from config.settings import SERVER_ADDR, SERVER_PORT, TCP_TIMEOUT_SECONDS
-from app.logging import log_debug_data
-from domain.models import ServerSendData
+from client.config.settings import SERVER_ADDR, SERVER_PORT, TCP_TIMEOUT_SECONDS
+from client.app.logging import log_debug_data
+from client.domain.models import ServerSendData
 
 logger = logging.getLogger(__name__)
 

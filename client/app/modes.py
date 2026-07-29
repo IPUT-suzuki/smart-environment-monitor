@@ -1,22 +1,22 @@
 import logging
 
-from adapters.sensors.dummy import DummyBME280Sensor, DummyDHT22Sensor, DummyMHZ19CSensor
-from app.runtime import MonitorRuntime, SensorSuite
-from config.settings import BME280_ADDR, DHT22_GPIO, SERIAL_BAUDRATE, SERIAL_PORT, SERIAL_TIMEOUT
-from tests.targets import run_test_target
+from client.adapters.sensors.dummy import DummyBME280Sensor, DummyDHT22Sensor, DummyMHZ19CSensor
+from client.app.runtime import MonitorRuntime, SensorSuite
+from client.config.settings import BME280_ADDR, DHT22_GPIO, SERIAL_BAUDRATE, SERIAL_PORT, SERIAL_TIMEOUT
+from client.tests.targets import run_test_target
 
 logger = logging.getLogger(__name__)
 
 
 def run_main_mode(args) -> None:
-    from adapters.sensors.bme280 import BME280Sensor
-    from adapters.sensors.dht22 import DHT22Sensor
-    from adapters.sensors.mhz19c import MHZ19CSensor
+    from client.adapters.sensors.bme280 import BME280Sensor
+    from client.adapters.sensors.dht22 import DHT22Sensor
+    from client.adapters.sensors.mhz19c import MHZ19CSensor
 
     sensors = SensorSuite(
         dht22=DHT22Sensor(DHT22_GPIO),
         bme280=BME280Sensor(BME280_ADDR),
-        mhz19c=DummyMHZ19CSensor(),
+        mhz19c=MHZ19CSensor(SERIAL_PORT, SERIAL_BAUDRATE, SERIAL_TIMEOUT),
     )
     logger.info("start main mode")
     logger.debug(

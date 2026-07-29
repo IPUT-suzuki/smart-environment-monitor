@@ -1,8 +1,8 @@
 import logging
-from adapters.tcp_server import SensorTcpServer
-from config.settings import SENSOR_DATA_PATH, SERVER_ADDR, SERVER_PORT
-from repositories.csv_sensor_repository import CsvSensorRepository
-from tests.roundtrip import run_roundtrip_test
+from server.adapters.tcp_server import SensorTcpServer
+from server.config.settings import SENSOR_DATA_PATH, SERVER_ADDR, SERVER_PORT
+from server.repositories.csv_sensor_repository import CsvSensorRepository
+from server.tests.roundtrip import run_roundtrip_test
 
 logger = logging.getLogger(__name__)
 def run_main_mode(args) -> None:

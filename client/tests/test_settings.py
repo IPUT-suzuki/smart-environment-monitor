@@ -1,8 +1,10 @@
 import os
+import importlib
 import unittest
 from unittest.mock import patch
 
-from config.settings import env_float, env_int
+from client.config import settings
+from client.config.settings import env_float, env_int
 
 
 class SettingsTest(unittest.TestCase):
@@ -22,6 +24,18 @@ class SettingsTest(unittest.TestCase):
         with patch.dict(os.environ, {"TEST_CLIENT_SETTING": "0"}, clear=False):
             with self.assertRaisesRegex(ValueError, "greater than 0"):
                 env_float("TEST_CLIENT_SETTING", 5)
+
+    def test_env_float_rejects_non_finite_values(self):
+        for value in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(value=value), patch.dict(os.environ, {"TEST_CLIENT_SETTING": value}, clear=False):
+                with self.assertRaisesRegex(ValueError, "greater than 0"):
+                    env_float("TEST_CLIENT_SETTING", 5)
+
+    def test_default_send_interval_is_ten_seconds(self):
+        with patch.dict(os.environ, {"SEND_INTERVAL_SECONDS": ""}, clear=False):
+            importlib.reload(settings)
+            self.assertEqual(settings.DEFAULT_SEND_INTERVAL, 10)
+        importlib.reload(settings)
         with patch.dict(os.environ, {"TEST_CLIENT_SETTING": "invalid"}, clear=False):
             with self.assertRaisesRegex(ValueError, "must be a number"):
                 env_float("TEST_CLIENT_SETTING", 5)

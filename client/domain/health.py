@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from domain.models import HealthReportHealth, SensorHealth, ServerSendHealth
+from client.domain.models import HealthReportHealth, SensorHealth, ServerSendHealth
 
 JST = timezone(timedelta(hours=9))
 

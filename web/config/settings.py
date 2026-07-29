@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,7 +29,7 @@ def env_float(name, default, minimum=0):
         parsed = float(value)
     except ValueError as error:
         raise ValueError(f"{name} must be a number") from error
-    if parsed <= minimum:
+    if not math.isfinite(parsed) or parsed <= minimum:
         raise ValueError(f"{name} must be greater than {minimum}")
     return parsed
 
@@ -58,3 +59,5 @@ HEALTH_HISTORY_PATH = env_path("HEALTH_HISTORY_PATH", "data/health_history.csv")
 HEALTH_OFFLINE_AFTER_SECONDS = env_float("HEALTH_OFFLINE_AFTER_SECONDS", 30)
 HEALTH_STREAM_RETRY_MILLISECONDS = env_int("HEALTH_STREAM_RETRY_MILLISECONDS", 3000, minimum=1)
 HEALTH_STREAM_KEEPALIVE_SECONDS = env_float("HEALTH_STREAM_KEEPALIVE_SECONDS", 15)
+CSV_LOCK_TIMEOUT_SECONDS = env_float("CSV_LOCK_TIMEOUT_SECONDS", 5)
+CSV_LOCK_STALE_AFTER_SECONDS = env_float("CSV_LOCK_STALE_AFTER_SECONDS", 60)

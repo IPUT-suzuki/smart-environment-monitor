@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -33,21 +34,24 @@ def env_float(name, default, minimum=0):
         parsed = float(value)
     except ValueError as error:
         raise ValueError(f"{name} must be a number") from error
-    if parsed <= minimum:
+    if not math.isfinite(parsed) or parsed <= minimum:
         raise ValueError(f"{name} must be greater than {minimum}")
     return parsed
 
 
-SERVER_ADDR = require_env("SERVER_ADDR")
-SERVER_PORT = env_int("SERVER_PORT", int(require_env("SERVER_PORT")), minimum=1)
+# Importing client modules must be safe for automated tests and for tooling.
+# Deployments should set these values in client/.env; the defaults only make a
+# local mock invocation possible and are intentionally not production hosts.
+SERVER_ADDR = os.getenv("SERVER_ADDR", "127.0.0.1")
+SERVER_PORT = env_int("SERVER_PORT", 9000, minimum=1)
 
 WEB_HEALTH_URL = os.getenv("WEB_HEALTH_URL")
-CLIENT_REGION = require_env("CLIENT_REGION")
-CLIENT_ID = require_env("CLIENT_ID")
+CLIENT_REGION = os.getenv("CLIENT_REGION", "unknown")
+CLIENT_ID = os.getenv("CLIENT_ID", "client-unknown")
 
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-DEFAULT_SEND_INTERVAL = env_float("SEND_INTERVAL_SECONDS", 4)
+DEFAULT_SEND_INTERVAL = env_float("SEND_INTERVAL_SECONDS", 10)
 HEARTBEAT_INTERVAL = env_float("HEARTBEAT_INTERVAL_SECONDS", 10)
 SENSOR_FAILURE_NOTIFY_THRESHOLD = env_int("SENSOR_FAILURE_NOTIFY_THRESHOLD", 3, minimum=1)
 HEALTH_REPORT_FAILURE_NOTIFY_THRESHOLD = env_int("HEALTH_REPORT_FAILURE_NOTIFY_THRESHOLD", 3, minimum=1)

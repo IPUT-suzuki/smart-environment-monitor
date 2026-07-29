@@ -1,6 +1,6 @@
 import argparse
 
-from tests.targets import TEST_TARGETS
+from client.tests.targets import TEST_TARGETS
 
 
 def parse_args():

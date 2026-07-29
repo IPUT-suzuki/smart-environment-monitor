@@ -1,4 +1,4 @@
-from config.settings import (
+from server.config.settings import (
     SENSOR_DATA_PATH,
     SERVER_ADDR,
     SERVER_PORT,
@@ -6,4 +6,6 @@ from config.settings import (
     TCP_CONNECTION_TIMEOUT_SECONDS,
     TCP_MAX_REQUEST_BYTES,
     TCP_SHUTDOWN_TIMEOUT_SECONDS,
+    CSV_LOCK_TIMEOUT_SECONDS,
+    CSV_LOCK_STALE_AFTER_SECONDS,
 )

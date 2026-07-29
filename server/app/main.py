@@ -1,8 +1,8 @@
 import logging
 
-from app.cli import parse_args
-from app.modes import run_main_mode, run_test_mode
-from app.logging import setup_logging
+from server.app.cli import parse_args
+from server.app.modes import run_main_mode, run_test_mode
+from server.app.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 

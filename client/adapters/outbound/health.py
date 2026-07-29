@@ -5,9 +5,9 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 
-from config.settings import WEB_HEALTH_TIMEOUT_SECONDS, WEB_HEALTH_URL
-from app.logging import log_debug_data
-from domain.models import ClientHeartBeat
+from client.config.settings import WEB_HEALTH_TIMEOUT_SECONDS, WEB_HEALTH_URL
+from client.app.logging import log_debug_data
+from client.domain.models import ClientHeartBeat
 
 logger = logging.getLogger(__name__)
 

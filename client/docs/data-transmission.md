@@ -23,6 +23,7 @@
 ```
 
 - A payload is sent only when all three sensor reads succeed. A read failure is reported by the healthcheck instead.
+- All four `sensor_data` fields are required. Temperature, humidity, and pressure use at most one decimal place; CO2 is an integer. Unknown measurement fields are rejected by the receiver.
 - `session_id` identifies one client process. `sequence` starts at 1 and increments for each send attempt in that process.
 - Sender success means a matching `ok: true` server acknowledgement was received after CSV storage. The acknowledgement returns the server's cumulative `received_count` for that client.
 - Server deduplicates the same `client_id`, `session_id`, and `sequence` tuple.
@@ -53,3 +54,4 @@ When the sensor TCP payload, transport, destination selection, send condition, o
 - 2026-06-22: Added `server_send.success_count` to the healthcheck payload. No TCP wire-format change.
 - 2026-06-22: Changed TCP sensor protocol to JSON Lines with storage ACK; added `session_id` and `sequence`. Client success now means acknowledged server storage.
 - 2026-06-22: Added threshold and recovery Discord notifications for sensors, health reports, TCP sends, and client lifecycle events.
+- 2026-07-29: Unified TCP and Web manual measurement validation. All four measurements are required; temperature, humidity, and pressure allow at most one decimal place, while CO2 must be an integer. The shipped sensor adapters already emit this format; external senders using different precision must update.

@@ -1,6 +1,6 @@
 from typing import Any
 
-SENSOR_FIELDS = ("temperature", "humidity", "pressure", "co2")
+from common.measurement_schema import validate_measurement_data
 
 
 def validate_payload(payload: Any) -> str | None:
@@ -12,11 +12,4 @@ def validate_payload(payload: Any) -> str | None:
     sequence = payload.get("sequence")
     if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
         return "sequence must be a positive integer"
-    sensor_data = payload.get("sensor_data")
-    if not isinstance(sensor_data, dict):
-        return "sensor_data must be an object"
-    for field in SENSOR_FIELDS:
-        value = sensor_data.get(field)
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            return f"sensor_data.{field} must be a number"
-    return None
+    return validate_measurement_data(payload.get("sensor_data"))

@@ -3,15 +3,16 @@ import logging
 import socket
 import threading
 
-from app.logging import log_debug_data
-from config.settings import (
+from common.csv_lock import CsvLockTimeoutError
+from server.app.logging import log_debug_data
+from server.config.settings import (
     TCP_ACCEPT_TIMEOUT_SECONDS,
     TCP_CONNECTION_TIMEOUT_SECONDS,
     TCP_MAX_REQUEST_BYTES,
     TCP_SHUTDOWN_TIMEOUT_SECONDS,
 )
-from domain.protocol import validate_payload
-from repositories.csv_sensor_repository import CsvSensorRepository
+from server.domain.protocol import validate_payload
+from server.repositories.csv_sensor_repository import CsvSensorRepository
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,10 @@ class SensorTcpServer:
         })
         try:
             result = self.repository.save(payload)
+        except CsvLockTimeoutError:
+            logger.warning("storage lock timed out while saving sensor data")
+            self._send_ack(connection, {"ok": False, "error": "storage is busy; retry later"})
+            return
         except OSError as error:
             logger.exception("failed to save payload")
             self._send_ack(connection, {"ok": False, "error": f"storage failure: {error}"})

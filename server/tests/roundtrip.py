@@ -8,8 +8,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from adapters.tcp_server import SensorTcpServer
-from repositories.csv_sensor_repository import CSV_FIELDS, CsvSensorRepository
+from server.adapters.tcp_server import SensorTcpServer
+from server.repositories.csv_sensor_repository import CSV_FIELDS, CsvSensorRepository
 
 logger = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -60,7 +60,7 @@ def run_roundtrip_test(count: int) -> None:
         host, port = server.address
         try:
             command = [
-                sys.executable, str(ROOT_DIR / "client" / "main.py"),
+                sys.executable, "-m", "client.main",
                 "--mode", "mock", "--iterations", str(count), "--interval", "0",
                 "--no-notify",
                 "--server-addr", host, "--server-port", str(port),

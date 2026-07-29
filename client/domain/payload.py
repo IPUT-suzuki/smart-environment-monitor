@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from config.settings import CLIENT_ID, CLIENT_REGION
-from domain.health import JST
-from domain.models import SensorData, ServerSendData
+from client.config.settings import CLIENT_ID, CLIENT_REGION
+from client.domain.health import JST
+from client.domain.models import SensorData, ServerSendData
 
 
 def build_sensor_payload(sensor_data: SensorData, session_id: str, sequence: int) -> ServerSendData:

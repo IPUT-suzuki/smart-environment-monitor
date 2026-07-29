@@ -1,15 +1,23 @@
 import csv
-import fcntl
 import json
+import logging
+import math
+import os
 import queue
 import re
 import threading
+import uuid
 from io import StringIO
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
-from config.settings import (
+from common.csv_lock import CsvLockTimeoutError, csv_lock
+from common.csv_schema import SENSOR_CSV_FIELDS
+from common.measurement_schema import validate_measurement_data
+from web.config.settings import (
+    CSV_LOCK_STALE_AFTER_SECONDS,
+    CSV_LOCK_TIMEOUT_SECONDS,
     HEALTH_HISTORY_PATH as CONFIGURED_HEALTH_HISTORY_PATH,
     HEALTH_OFFLINE_AFTER_SECONDS,
     HEALTH_STREAM_KEEPALIVE_SECONDS,
@@ -66,6 +74,32 @@ HEALTH_STREAM_SUBSCRIBERS = set()
 
 app = Flask(__name__)
 app.json.sort_keys = False
+logger = logging.getLogger(__name__)
+
+
+@app.errorhandler(CsvLockTimeoutError)
+def handle_csv_lock_timeout(error):
+    message = "CSV が他の処理で使用中です。しばらくしてから再試行してください。"
+    if request.path.startswith("/api/"):
+        return jsonify({"error": message}), 503
+    return Response(message, status=503, mimetype="text/plain")
+
+
+def lock_csv(path: Path):
+    """Use the same directory-lock protocol as the TCP receiver."""
+    return csv_lock(
+        path,
+        timeout_seconds=CSV_LOCK_TIMEOUT_SECONDS,
+        stale_after_seconds=CSV_LOCK_STALE_AFTER_SECONDS,
+    )
+
+
+def csv_path_label(path: Path) -> str:
+    """Return a useful path label without failing for an external data path."""
+    try:
+        return str(path.relative_to(BASE_DIR))
+    except ValueError:
+        return str(path)
 
 
 def find_csv_path():
@@ -77,13 +111,13 @@ def find_csv_path():
 
 def load_sensor_rows():
     csv_path = find_csv_path()
-    if not csv_path.exists():
-        return csv_path, [], []
-
-    with csv_path.open("r", newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        fieldnames = reader.fieldnames or []
+    with lock_csv(csv_path):
+        if not csv_path.exists():
+            return csv_path, list(SENSOR_CSV_FIELDS), []
+        with csv_path.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            fieldnames = reader.fieldnames or list(SENSOR_CSV_FIELDS)
 
     def row_datetime(row):
         try:
@@ -98,11 +132,12 @@ def load_sensor_rows():
 def sensor_payload():
     csv_path, fieldnames, rows = load_sensor_rows()
     return {
-        "csv_path": str(csv_path.relative_to(BASE_DIR)),
+        "csv_path": csv_path_label(csv_path),
         "fieldnames": fieldnames,
         "field_labels": FIELD_LABELS,
         "rows": rows,
         "row_count": len(rows),
+        "averages": calculate_averages(rows),
     }
 
 
@@ -141,9 +176,12 @@ def parse_search_query(args):
             if not value:
                 continue
             try:
-                values[suffix.removeprefix("_") or "equals"] = float(value)
+                numeric_value = float(value)
             except ValueError as error:
                 raise ValueError(f"{field}{suffix} は数値で指定してください") from error
+            if not math.isfinite(numeric_value):
+                raise ValueError(f"{field}{suffix} は有限の数値で指定してください")
+            values[suffix.removeprefix("_") or "equals"] = numeric_value
         if "min" in values and "max" in values and values["min"] > values["max"]:
             raise ValueError(f"{field}_min は {field}_max 以下にしてください")
         filters["numeric"][field] = values
@@ -179,6 +217,8 @@ def search_sensor_rows(rows, filters):
                 row_value = float(row.get(field, ""))
             except (TypeError, ValueError):
                 return False
+            if not math.isfinite(row_value):
+                return False
             if "equals" in condition and row_value != condition["equals"]:
                 return False
             if "min" in condition and row_value < condition["min"]:
@@ -188,6 +228,59 @@ def search_sensor_rows(rows, filters):
         return True
 
     return [row for row in rows if matches(row)]
+
+
+def calculate_averages(rows):
+    """Return averages for all numeric metrics; ``None`` means no valid data."""
+    averages = {}
+    for field in ("temperature", "humidity", "pressure", "co2"):
+        values = []
+        for row in rows:
+            try:
+                value = float(row.get(field, ""))
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(value):
+                values.append(value)
+        averages[field] = sum(values) / len(values) if values else None
+    return averages
+
+
+def sort_sensor_rows(rows, sort_by: str = "datetime", sort_order: str = "desc"):
+    if sort_by not in SENSOR_CSV_FIELDS:
+        raise ValueError("sort_by が不正です")
+    if sort_order not in {"asc", "desc"}:
+        raise ValueError("sort_order は asc または desc を指定してください")
+
+    def key(row):
+        if sort_by == "datetime":
+            try:
+                return (0, parse_sensor_datetime(row.get("datetime", "")))
+            except (TypeError, ValueError):
+                return (1, datetime.min.replace(tzinfo=JST))
+        if sort_by in {"temperature", "humidity", "pressure", "co2", "sequence"}:
+            try:
+                value = float(row.get(sort_by, ""))
+                return (0, value) if math.isfinite(value) else (1, 0)
+            except (TypeError, ValueError):
+                return (1, 0)
+        return (0, str(row.get(sort_by, "")).lower())
+
+    return sorted(rows, key=key, reverse=sort_order == "desc")
+
+
+def sensor_csv_download(rows, fieldnames):
+    output = StringIO(newline="")
+    columns = fieldnames or list(SENSOR_CSV_FIELDS)
+    writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\r\n", extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return "\ufeff" + output.getvalue()
+
+
+def sensor_download_filename():
+    timestamp = datetime.now(JST).strftime("%Y%m%d-%H%M%S")
+    return f"sensor-data-{timestamp}.csv"
 
 
 def search_filters_payload(filters):
@@ -206,6 +299,18 @@ def is_bool(value):
 
 def is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def dry_run_requested():
+    value = request.args.get("dry_run")
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("dry_run は true または false を指定してください")
 
 
 def validate_health_payload(payload):
@@ -312,8 +417,8 @@ def expand_health(row):
     return payload
 
 
-def migrate_health_history_schema():
-    """Add newly introduced health columns before appending to an existing CSV."""
+def _migrate_health_history_schema_unlocked():
+    """Add columns before appending while the shared health lock is held."""
     if not HEALTH_HISTORY_PATH.exists():
         return
     with HEALTH_HISTORY_PATH.open("r", newline="", encoding="utf-8") as f:
@@ -322,7 +427,7 @@ def migrate_health_history_schema():
             return
         rows = list(reader)
 
-    migrated_path = HEALTH_HISTORY_PATH.with_suffix(".migrating")
+    migrated_path = HEALTH_HISTORY_PATH.with_name(f"{HEALTH_HISTORY_PATH.name}.{os.getpid()}.migrating")
     with migrated_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=HEALTH_FIELDS)
         writer.writeheader()
@@ -335,33 +440,44 @@ def migrate_health_history_schema():
             ):
                 row[field] = old_row.get(field, "0")
             writer.writerow(row)
-    migrated_path.replace(HEALTH_HISTORY_PATH)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(migrated_path, HEALTH_HISTORY_PATH)
+
+
+def migrate_health_history_schema():
+    with lock_csv(HEALTH_HISTORY_PATH):
+        _migrate_health_history_schema_unlocked()
 
 
 def append_health_history(payload, received_at):
-    HEALTH_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    migrate_health_history_schema()
-    row = flatten_health(payload, received_at)
-    file_exists = HEALTH_HISTORY_PATH.exists()
-    with HEALTH_HISTORY_PATH.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=HEALTH_FIELDS)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
+    with lock_csv(HEALTH_HISTORY_PATH):
+        HEALTH_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _migrate_health_history_schema_unlocked()
+        row = flatten_health(payload, received_at)
+        file_exists = HEALTH_HISTORY_PATH.exists()
+        with HEALTH_HISTORY_PATH.open("a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=HEALTH_FIELDS)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+            f.flush()
+            os.fsync(f.fileno())
 
 
 def load_latest_health():
-    if not HEALTH_HISTORY_PATH.exists():
-        return {}
-    latest = {}
-    with HEALTH_HISTORY_PATH.open("r", newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            try:
-                payload = expand_health(row)
-                latest[payload["client"]["client_id"]] = {"received_at": row["received_at"], "payload": payload}
-            except (KeyError, TypeError, ValueError):
-                continue
-    return latest
+    with lock_csv(HEALTH_HISTORY_PATH):
+        if not HEALTH_HISTORY_PATH.exists():
+            return {}
+        latest = {}
+        with HEALTH_HISTORY_PATH.open("r", newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                try:
+                    payload = expand_health(row)
+                    latest[payload["client"]["client_id"]] = {"received_at": row["received_at"], "payload": payload}
+                except (KeyError, TypeError, ValueError):
+                    continue
+        return latest
 
 
 def health_status(received_at):
@@ -394,15 +510,15 @@ def health_payload(client_id="", region=""):
 
 
 def health_history_csv(client_id):
-    if not HEALTH_HISTORY_PATH.exists():
-        return None
-
-    with HEALTH_HISTORY_PATH.open("r", newline="", encoding="utf-8") as f:
-        rows = [
-            {field: row.get(field, "") for field in HEALTH_FIELDS}
-            for row in csv.DictReader(f)
-            if row.get("client_id") == client_id
-        ]
+    with lock_csv(HEALTH_HISTORY_PATH):
+        if not HEALTH_HISTORY_PATH.exists():
+            return None
+        with HEALTH_HISTORY_PATH.open("r", newline="", encoding="utf-8") as f:
+            rows = [
+                {field: row.get(field, "") for field in HEALTH_FIELDS}
+                for row in csv.DictReader(f)
+                if row.get("client_id") == client_id
+            ]
     if not rows:
         return None
 
@@ -437,25 +553,54 @@ def api_docs():
 
 @app.route("/api/sensor-data")
 def sensor_data():
+    logger.info("sensor data display requested: endpoint=/api/sensor-data")
     return jsonify(sensor_payload())
 
 
 @app.route("/api/sensor-data/search")
 def search_sensor_data():
+    logger.info("sensor data search requested: endpoint=/api/sensor-data/search")
     try:
         filters = parse_search_query(request.args)
         csv_path, fieldnames, rows = load_sensor_rows()
         rows = search_sensor_rows(rows, filters)
+        rows = sort_sensor_rows(
+            rows,
+            request.args.get("sort_by", "datetime"),
+            request.args.get("sort_order", "desc"),
+        )
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     return jsonify({
-        "csv_path": str(csv_path.relative_to(BASE_DIR)),
+        "csv_path": csv_path_label(csv_path),
         "fieldnames": fieldnames,
         "field_labels": FIELD_LABELS,
         "filters": search_filters_payload(filters),
         "rows": rows,
         "row_count": len(rows),
+        "averages": calculate_averages(rows),
     })
+
+
+@app.route("/api/sensor-data/download")
+def download_sensor_data():
+    logger.info("sensor data download requested: endpoint=/api/sensor-data/download")
+    try:
+        filters = parse_search_query(request.args)
+        _, fieldnames, rows = load_sensor_rows()
+        rows = search_sensor_rows(rows, filters)
+        rows = sort_sensor_rows(
+            rows,
+            request.args.get("sort_by", "datetime"),
+            request.args.get("sort_order", "desc"),
+        )
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return Response(
+        sensor_csv_download(rows, fieldnames),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{sensor_download_filename()}"'},
+    )
 
 
 @app.route("/api/health", methods=["POST"])
@@ -464,9 +609,20 @@ def receive_health():
     error = validate_health_payload(payload)
     if error:
         return jsonify({"error": error}), 400
+    try:
+        dry_run = dry_run_requested()
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    client_id = payload["client"]["client_id"]
+    if dry_run:
+        return jsonify({
+            "valid": True,
+            "dry_run": True,
+            "client_id": client_id,
+        })
 
     received_at = datetime.now(JST).isoformat(timespec="seconds")
-    client_id = payload["client"]["client_id"]
     with HEALTH_LOCK:
         append_health_history(payload, received_at)
         LATEST_HEALTH[client_id] = {"received_at": received_at, "payload": payload}
@@ -521,9 +677,6 @@ def health_stream():
     )
 
 
-MANUAL_SENSOR_FIELDS = ("temperature", "humidity", "pressure", "co2")
-
-
 def validate_manual_sensor_payload(payload):
     if not isinstance(payload, dict):
         return "JSON object is required"
@@ -533,55 +686,57 @@ def validate_manual_sensor_payload(payload):
     if not rows:
         return "rows must not be empty"
     for index, row in enumerate(rows):
-        if not isinstance(row, dict):
-            return f"rows[{index}] must be an object"
-        for field in MANUAL_SENSOR_FIELDS:
-            value = row.get(field)
-            if value is None:
-                return f"rows[{index}].{field} is required"
-            if isinstance(value, bool):
-                return f"rows[{index}].{field} must be a number"
-            if field == "co2":
-                if not isinstance(value, int) or isinstance(value, bool):
-                    return f"rows[{index}].co2 must be an integer"
-            else:
-                if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    return f"rows[{index}].{field} must be a number"
+        error = validate_measurement_data(row, prefix=f"rows[{index}]")
+        if error:
+            return error
     return None
 
 
 def append_manual_sensor_rows(rows):
     now = datetime.now(JST)
-    session_id = now.strftime("web-manual-%Y%m%d%H%M%S")
+    session_id = f"web-manual-{uuid.uuid4()}"
     csv_path = find_csv_path()
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = csv_path.exists()
-    SENSOR_CSV_FIELDS = [
-        "client_id", "region", "datetime", "session_id", "sequence",
-        "temperature", "humidity", "pressure", "co2",
-    ]
-    with SENSOR_CSV_LOCK:
+    with SENSOR_CSV_LOCK, lock_csv(csv_path):
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        _migrate_sensor_csv_schema_unlocked(csv_path)
+        file_exists = csv_path.exists()
         with csv_path.open("a", newline="", encoding="utf-8") as file:
-            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
-            try:
-                writer = csv.DictWriter(file, fieldnames=SENSOR_CSV_FIELDS)
-                if not file_exists:
-                    writer.writeheader()
-                for index, sensor_data in enumerate(rows):
-                    writer.writerow({
-                        "client_id": "web-manual",
-                        "region": "web-input",
-                        "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
-                        "session_id": session_id,
-                        "sequence": index + 1,
-                        "temperature": sensor_data["temperature"],
-                        "humidity": sensor_data["humidity"],
-                        "pressure": sensor_data["pressure"],
-                        "co2": sensor_data["co2"],
-                    })
-            finally:
-                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+            writer = csv.DictWriter(file, fieldnames=SENSOR_CSV_FIELDS)
+            if not file_exists:
+                writer.writeheader()
+            for index, sensor_data in enumerate(rows):
+                writer.writerow({
+                    "client_id": "web-manual",
+                    "region": "web-input",
+                    "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+                    "session_id": session_id,
+                    "sequence": index + 1,
+                    "temperature": f"{float(sensor_data['temperature']):.1f}",
+                    "humidity": f"{float(sensor_data['humidity']):.1f}",
+                    "pressure": f"{float(sensor_data['pressure']):.1f}",
+                    "co2": int(sensor_data["co2"]),
+                })
+            file.flush()
+            os.fsync(file.fileno())
     return session_id
+
+
+def _migrate_sensor_csv_schema_unlocked(csv_path):
+    if not csv_path.exists():
+        return
+    with csv_path.open("r", newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        if reader.fieldnames == list(SENSOR_CSV_FIELDS):
+            return
+        rows = list(reader)
+    migrated_path = csv_path.with_name(f"{csv_path.name}.{os.getpid()}.migrating")
+    with migrated_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=SENSOR_CSV_FIELDS)
+        writer.writeheader()
+        writer.writerows({field: row.get(field, "") for field in SENSOR_CSV_FIELDS} for row in rows)
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(migrated_path, csv_path)
 
 
 @app.route("/api/sensor-data/manual", methods=["POST"])
@@ -590,6 +745,16 @@ def receive_manual_sensor():
     error = validate_manual_sensor_payload(payload)
     if error:
         return jsonify({"error": error}), 400
+    try:
+        dry_run = dry_run_requested()
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    if dry_run:
+        return jsonify({
+            "valid": True,
+            "dry_run": True,
+            "rows_validated": len(payload["rows"]),
+        })
     session_id = append_manual_sensor_rows(payload["rows"])
     return jsonify({"rows_added": len(payload["rows"]), "session_id": session_id}), 201
 

@@ -15,6 +15,7 @@
             </div>
             <div class="header-actions">
                 <a class="refresh-link" href="{{ url_for('api_docs') }}">API</a>
+                <button class="refresh-link" type="button" data-csv-download>CSV保存</button>
                 <button class="refresh-link" type="button" data-refresh-button>更新</button>
             </div>
         </header>
@@ -26,6 +27,16 @@
                 <button class="view-button" type="button" data-view-button="health">ヘルス</button>
                 <button class="view-button" type="button" data-view-button="manual">手動入力</button>
             </div>
+        </section>
+
+        <section class="average-summary" data-average-summary aria-label="抽出結果の平均値">
+            <p>抽出結果全体の平均値</p>
+            <dl>
+                <div><dt>温度</dt><dd data-average="temperature">データなし</dd></div>
+                <div><dt>湿度</dt><dd data-average="humidity">データなし</dd></div>
+                <div><dt>気圧</dt><dd data-average="pressure">データなし</dd></div>
+                <div><dt>CO2</dt><dd data-average="co2">データなし</dd></div>
+            </dl>
         </section>
 
         <section class="graph-panel" data-view-panel="graph" hidden>
@@ -108,25 +119,25 @@
         <section class="manual-panel" data-view-panel="manual" hidden>
             <div class="manual-panel-header">
                 <h2>手動入力</h2>
-                <p>温度・湿度・気圧・CO2 を数値で入力して保存します。</p>
+                <p>センサー送信形式と同じく4項目すべて必須です。温度・湿度・気圧は小数第1位まで、CO2は整数で入力してください。</p>
             </div>
             <form class="manual-form" data-manual-form>
                 <div class="manual-rows" data-manual-rows>
                     <div class="manual-row" data-manual-row>
                         <label class="filter-field">
-                            <span>温度</span>
+                            <span>温度（必須・小数第1位まで）</span>
                             <input type="number" step="0.1" placeholder="25.0" data-manual-input="temperature" required>
                         </label>
                         <label class="filter-field">
-                            <span>湿度</span>
+                            <span>湿度（必須・小数第1位まで）</span>
                             <input type="number" step="0.1" placeholder="50.0" data-manual-input="humidity" required>
                         </label>
                         <label class="filter-field">
-                            <span>気圧</span>
+                            <span>気圧（必須・小数第1位まで）</span>
                             <input type="number" step="0.1" placeholder="1000.0" data-manual-input="pressure" required>
                         </label>
                         <label class="filter-field">
-                            <span>CO2</span>
+                            <span>CO2（必須・整数）</span>
                             <input type="number" step="1" placeholder="700" data-manual-input="co2" required>
                         </label>
                     </div>
@@ -297,7 +308,7 @@
             </div>
         </section>
 
-        <section class="empty-state" {% if rows %}hidden{% endif %}>
+        <section class="empty-state" data-sensor-empty {% if rows %}hidden{% endif %}>
             <h2>CSV データがありません</h2>
             <p>センサーデータを受信すると、ここに表示されます。</p>
         </section>

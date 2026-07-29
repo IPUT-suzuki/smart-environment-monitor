@@ -1,15 +1,16 @@
 import logging
+import math
 import time
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Protocol
 
-from adapters.outbound.discord import notify_discord
-from adapters.outbound.health import send_heartbeat
-from adapters.outbound.tcp import send_to_server
-from app.logging import log_debug_data
-from config.settings import (
+from client.adapters.outbound.discord import notify_discord
+from client.adapters.outbound.health import send_heartbeat
+from client.adapters.outbound.tcp import send_to_server
+from client.app.logging import log_debug_data
+from client.config.settings import (
     CLIENT_ID,
     CLIENT_REGION,
     DEFAULT_SEND_INTERVAL,
@@ -19,9 +20,9 @@ from config.settings import (
     SENSOR_FAILURE_NOTIFY_THRESHOLD,
     SERVER_SEND_FAILURE_NOTIFY_THRESHOLD,
 )
-from domain.health import JST, now_string, record_health_report, record_send_failure, record_send_success, update_sensor_health
-from domain.models import ClientHeartBeat, ClientMetaData, ClientRuntimeHealth, SensorData
-from domain.payload import build_sensor_payload
+from client.domain.health import JST, now_string, record_health_report, record_send_failure, record_send_success, update_sensor_health
+from client.domain.models import ClientHeartBeat, ClientMetaData, ClientRuntimeHealth, SensorData
+from client.domain.payload import build_sensor_payload
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,29 @@ logger = logging.getLogger(__name__)
 class Sensor(Protocol):
     def read(self) -> dict | None: ...
     def close(self) -> None: ...
+
+
+SENSOR_READING_FIELDS = {
+    "dht22": ("temperature", "humidity"),
+    "bme280": ("pressure",),
+    "mhz19c": ("co2",),
+}
+
+
+def is_valid_sensor_reading(name: str, reading: dict | None) -> bool:
+    """Accept only complete, finite numeric readings for a sensor."""
+    if not isinstance(reading, dict):
+        return False
+    try:
+        values = (reading[field] for field in SENSOR_READING_FIELDS[name])
+        return all(
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            for value in values
+        )
+    except (KeyError, TypeError):
+        return False
 
 
 @dataclass
@@ -125,6 +149,15 @@ class MonitorRuntime:
         dht_data = self.sensors.dht22.read()
         bme_data = self.sensors.bme280.read()
         mhz_data = self.sensors.mhz19c.read()
+        raw_readings = {"dht22": dht_data, "bme280": bme_data, "mhz19c": mhz_data}
+        for name, data in tuple(raw_readings.items()):
+            if not is_valid_sensor_reading(name, data):
+                if data is not None:
+                    logger.warning("%s returned incomplete or non-finite data", name)
+                raw_readings[name] = None
+        dht_data = raw_readings["dht22"]
+        bme_data = raw_readings["bme280"]
+        mhz_data = raw_readings["mhz19c"]
         readings = (
             ("dht22", dht_data, self.health.sensor.dht22, "DHT22 read failed"),
             ("bme280", bme_data, self.health.sensor.bme280, "BME280 read failed"),
